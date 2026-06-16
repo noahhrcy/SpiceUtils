@@ -1,0 +1,14 @@
+# Environnements Python
+.venv/
+app/.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Artefacts de build de l'installateur
+installer/Output/
+
+# Journaux et fichiers temporaires
+*.log
+install*.log
+_*.py

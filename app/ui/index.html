@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SpiceUtils</title>
+  <link rel="icon" type="image/png" href="../icon.png" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- Barre laterale -->
+    <nav class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">
+          <span></span><span></span><span></span><span></span>
+        </div>
+        <div class="brand-text">SpiceUtils</div>
+      </div>
+      <button class="nav-item active" data-tab="home">Accueil</button>
+      <button class="nav-item" data-tab="extensions">Extensions</button>
+      <button class="nav-item" data-tab="settings">Reglages</button>
+      <div class="sidebar-footer">
+        <span id="footer-status" class="dot off"></span>
+        <span id="footer-label">Serveur arrete</span>
+      </div>
+    </nav>
+
+    <!-- Contenu -->
+    <main class="content">
+      <!-- Accueil -->
+      <section class="tab active" id="tab-home">
+        <div class="home-hero">
+          <img class="home-logo" src="../icon.png" alt="SpiceUtils" />
+          <h1 class="home-title">SpiceUtils</h1>
+          <p class="muted">Votre hub d'extensions Spicetify.</p>
+          <div class="home-actions">
+            <button class="btn primary" data-goto="extensions">Extensions</button>
+            <button class="btn" id="btn-github">GitHub</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Extensions -->
+      <section class="tab" id="tab-extensions">
+        <h1>Extensions</h1>
+        <div id="spicetify-warning" class="warning hidden">
+          Spicetify n'a pas ete detecte. Installez-le depuis
+          <b>spicetify.app</b> pour pouvoir installer des extensions.
+        </div>
+        <div id="ext-list" class="ext-list"></div>
+      </section>
+
+      <!-- Serveur -->
+      <section class="tab" id="tab-server">
+        <button class="link back" id="btn-back-ext">← Extensions</button>
+        <h1>Serveur</h1>
+        <div class="panel server-panel">
+          <div class="server-head">
+            <div>
+              <span id="server-dot" class="dot off"></span>
+              <span id="server-state">Arrete</span>
+            </div>
+            <div class="server-actions">
+              <button class="btn primary" id="btn-start">Demarrer</button>
+              <button class="btn" id="btn-stop">Arreter</button>
+            </div>
+          </div>
+          <div class="server-meta">
+            <div><span class="muted">Adresse</span><br /><b id="server-addr">—</b></div>
+            <div><span class="muted">Version</span><br /><b id="server-ver">—</b></div>
+            <div class="grow">
+              <span class="muted">Dossier de sortie</span><br />
+              <b id="server-out">—</b>
+              <button class="link" id="btn-open-out">Ouvrir</button>
+            </div>
+          </div>
+        </div>
+        <h3 class="logs-title">Journal</h3>
+        <pre id="logbox" class="logbox"></pre>
+      </section>
+
+      <!-- Reglages -->
+      <section class="tab" id="tab-settings">
+        <h1>Reglages</h1>
+        <div class="panel">
+          <label class="row-toggle">
+            <span>
+              <b>Lancer SpiceUtils au demarrage du PC</b>
+              <small class="muted">Ajoute SpiceUtils au demarrage de Windows (icone barre des taches).</small>
+            </span>
+            <input type="checkbox" id="set-autostart-app" />
+          </label>
+          <label class="row-toggle">
+            <span>
+              <b>Demarrer le serveur a l'ouverture de l'app</b>
+              <small class="muted">Le serveur se lance automatiquement quand SpiceUtils s'ouvre.</small>
+            </span>
+            <input type="checkbox" id="set-autostart-server" />
+          </label>
+        </div>
+        <div class="panel danger-zone">
+          <button class="btn" id="btn-quit">Quitter SpiceUtils</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Fond anime -->
+  <div class="bg-fx">
+    <div class="orb orb1"></div>
+    <div class="orb orb2"></div>
+    <div class="orb orb3"></div>
+    <div class="grid-glow"></div>
+  </div>
+
+  <!-- Modal de fermeture -->
+  <div id="close-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-icon"><span></span><span></span><span></span><span></span></div>
+      <h2>Quitter SpiceUtils ?</h2>
+      <p class="muted">Le serveur de stems tourne actuellement.<br />Que voulez-vous faire ?</p>
+      <div class="modal-actions">
+        <button class="btn modal-keep" id="modal-keep">
+          <b>Laisser tourner</b><small>en arriere-plan (barre des taches)</small>
+        </button>
+        <button class="btn modal-off" id="modal-off">
+          <b>Eteindre</b><small>arreter le serveur et quitter</small>
+        </button>
+      </div>
+      <button class="modal-cancel" id="modal-cancel">Annuler</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>
