@@ -65,8 +65,14 @@
         display:none;max-height:96px;overflow-y:auto}
       #stemx-progress .sx-list.show{display:block}
       #stemx-progress .sx-list-h{font-size:10px;color:#7e6a99;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
-      #stemx-progress .sx-list-i{font-size:11px;color:#c8b8e6;padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      #stemx-progress .sx-list-i::before{content:"•";color:#9d5cff;margin-right:6px}
+      #stemx-progress .sx-list-i{font-size:11px;color:#c8b8e6;padding:2px 0;display:flex;align-items:center;gap:6px}
+      #stemx-progress .sx-list-i span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #stemx-progress .sx-list-i span::before{content:"•";color:#9d5cff;margin-right:6px}
+      #stemx-progress .sx-x,#stemx-progress .sx-cancel{background:none;border:none;color:#9a86b5;cursor:pointer;
+        font-size:12px;padding:0 4px;line-height:1}
+      #stemx-progress .sx-x:hover,#stemx-progress .sx-cancel:hover{color:#e07be0}
+      #stemx-progress .sx-cancel{margin-left:8px;display:none}
+      #stemx-progress .sx-cancel.show{display:inline}
       #stemx-progress.err{border-color:#c0445c}
       #stemx-progress.err .sx-fill{background:#c0445c}`;
     const style = document.createElement("style");
@@ -77,7 +83,8 @@
     el.id = "stemx-progress";
     el.innerHTML =
       '<div class="sx-row"><div class="sx-ic"><i></i><i></i><i></i></div>' +
-      '<span class="sx-title"></span><span class="sx-pct">0%</span></div>' +
+      '<span class="sx-title"></span><span class="sx-pct">0%</span>' +
+      '<button class="sx-cancel" title="Annuler l\'extraction en cours">✕</button></div>' +
       '<div class="sx-bar"><div class="sx-fill"></div></div>' +
       '<div class="sx-phase"></div>' +
       '<div class="sx-list"><div class="sx-list-h"></div></div>';
@@ -112,6 +119,8 @@
     }
     const list = progressEl.querySelector(".sx-list");
     if (list) list.classList.remove("show");
+    const cx = progressEl.querySelector(".sx-cancel");
+    if (cx) { cx.classList.remove("show"); cx.disabled = false; }
     const el = progressEl;
     setTimeout(() => { el.classList.remove("show"); }, isError ? 3500 : 1400);
   }
@@ -127,16 +136,29 @@
   function renderQueueList(pending) {
     if (!progressEl) return;
     const list = progressEl.querySelector(".sx-list");
-    if (!pending || pending.length === 0) { list.classList.remove("show"); return; }
-    let html = `<div class="sx-list-h">En attente (${pending.length})</div>`;
-    pending.forEach((t) => { html += `<div class="sx-list-i">${t}</div>`; });
-    list.innerHTML = html;
+    if (!pending || pending.length === 0) { list.innerHTML = ""; list.classList.remove("show"); return; }
+    list.innerHTML = `<div class="sx-list-h">En attente (${pending.length})</div>`;
+    pending.forEach((p) => {
+      const row = document.createElement("div");
+      row.className = "sx-list-i";
+      const s = document.createElement("span");
+      s.textContent = p.title;
+      const x = document.createElement("button");
+      x.className = "sx-x"; x.textContent = "✕"; x.title = "Retirer de la file";
+      x.onclick = () => { cancelJob(p.job_id); x.disabled = true; };
+      row.appendChild(s); row.appendChild(x);
+      list.appendChild(row);
+    });
     list.classList.add("show");
   }
 
   let queuePoller = null;
 
-  async function extractStems(uris) {
+  async function cancelJob(jobId) {
+    try { await fetch(`${SERVER_URL}/cancel/${jobId}`, { method: "POST" }); } catch (e) {}
+  }
+
+  async function extractStems(uris, mode) {
     if (!backendReady) {
       Spicetify.showNotification(
         "Serveur SpiceUtils non detecte. Ouvrez SpiceUtils et demarrez le serveur.",
@@ -154,6 +176,7 @@
       console.error("[StemExtractor]", e);
       return;
     }
+    if (mode) meta.quality = mode;
 
     try {
       const r = await fetch(`${SERVER_URL}/extract`, {
@@ -198,6 +221,9 @@
         progressEl.classList.remove("err");
         progressEl.classList.add("show");
         progressEl.querySelector(".sx-title").textContent = q.active.title;
+        const cx = progressEl.querySelector(".sx-cancel");
+        cx.classList.add("show");
+        cx.onclick = () => { cancelJob(q.active.job_id); cx.disabled = true; };
         let phase;
         if (q.active.status === "queued") {
           updateProgress(0);
@@ -238,6 +264,39 @@
     '<rect x="9" y="1" width="2" height="14" rx="1"/>' +
     '<rect x="13" y="5" width="2" height="6" rx="1"/></svg>';
 
+  // Petit menu de choix du mode (Rapide / Qualite) au clic sur le bouton.
+  const menuStyle = document.createElement("style");
+  menuStyle.textContent = `
+    #stemx-menu{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:10000;
+      background:linear-gradient(160deg,rgba(46,28,68,.98),rgba(26,16,40,.98));
+      border:1px solid rgba(157,92,255,.5);border-radius:14px;padding:8px;
+      box-shadow:0 16px 40px rgba(0,0,0,.55),0 0 24px rgba(126,63,224,.3);display:flex;gap:8px}
+    #stemx-menu button{background:var(--spice-card,#241439);color:#ece4f7;border:1px solid rgba(157,92,255,.3);
+      border-radius:10px;padding:10px 16px;font-size:13px;cursor:pointer;font-family:inherit}
+    #stemx-menu button:hover{background:#3a2160}
+    #stemx-menu .fast{background:linear-gradient(135deg,#c0445c,#8a2f44);border:none}
+    #stemx-menu .qual{background:linear-gradient(135deg,#7e3fe0,#9d5cff);border:none}`;
+  document.head.appendChild(menuStyle);
+
+  function showModeMenu(uris) {
+    const old = document.getElementById("stemx-menu");
+    if (old) { old.remove(); return; }
+    const m = document.createElement("div");
+    m.id = "stemx-menu";
+    const fast = document.createElement("button");
+    fast.className = "fast"; fast.textContent = "⚡ Extraction Rapide";
+    const qual = document.createElement("button");
+    qual.className = "qual"; qual.textContent = "✨ Extraction Qualité";
+    fast.onclick = () => { m.remove(); extractStems(uris, "fast"); };
+    qual.onclick = () => { m.remove(); extractStems(uris, "quality"); };
+    m.appendChild(fast); m.appendChild(qual);
+    document.body.appendChild(m);
+    setTimeout(() => {
+      const close = (e) => { if (!m.contains(e.target)) { m.remove(); document.removeEventListener("click", close); } };
+      document.addEventListener("click", close);
+    }, 50);
+  }
+
   new Spicetify.Playbar.Button(
     "Extraire les stems",
     STEM_ICON,
@@ -247,15 +306,21 @@
         Spicetify.showNotification("Aucun morceau en lecture", true);
         return;
       }
-      extractStems(cur.uri);
+      showModeMenu(cur.uri);
     },
     false,
     false
   );
 
   new Spicetify.ContextMenu.Item(
-    "Extraire les stems",
-    (uris) => extractStems(uris),
+    "Extraire les stems (Rapide)",
+    (uris) => extractStems(uris, "fast"),
+    (uris) => uris.length === 1 && Spicetify.URI.isTrack(uris[0]),
+    STEM_ICON
+  ).register();
+  new Spicetify.ContextMenu.Item(
+    "Extraire les stems (Qualité)",
+    (uris) => extractStems(uris, "quality"),
     (uris) => uris.length === 1 && Spicetify.URI.isTrack(uris[0]),
     STEM_ICON
   ).register();

@@ -2,7 +2,7 @@
   "id": "stemExtractor",
   "name": "Stem Extractor",
   "description": "Ajoute un bouton pour extraire les stems d'une track (attention : le serveur doit être installé. Cliquez sur le bouton \"Serveur\" juste en dessous).",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "author": "SpiceUtils",
   "file": "stemExtractor.js"
 }

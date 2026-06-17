@@ -50,9 +50,16 @@ class Api:
             return ""
 
     def open_output(self):
-        server_mod.OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
-        os.startfile(str(server_mod.OUTPUT_ROOT))  # noqa: S606 (Windows)
+        d = server_mod.output_root()
+        d.mkdir(parents=True, exist_ok=True)
+        os.startfile(str(d))  # noqa: S606 (Windows)
         return {"ok": True}
+
+    def get_queue(self):
+        return server_mod.queue_snapshot()
+
+    def cancel_job(self, job_id):
+        return server_mod.cancel(job_id)
 
     # Options d'extraction (Stem Extractor)
     def get_extract_config(self):

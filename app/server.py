@@ -23,7 +23,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.serving import make_server
 
-SERVER_VERSION = "2.4.0"
+SERVER_VERSION = "2.5.0"
 HOST = "127.0.0.1"
 PORT = 8765
 
@@ -150,6 +150,9 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 
 PCT_RE = re.compile(r"(\d+(?:\.\d+)?)%")
 
+# Sous-process en cours (pour pouvoir l'annuler) + drapeau d'annulation.
+_CUR = {"proc": None, "cancel": False}
+
 
 def _run_stream(cmd, label, on_pct=None):
     """Execute une commande en lisant sa sortie en continu (pour la progression).
@@ -162,6 +165,7 @@ def _run_stream(cmd, label, on_pct=None):
         text=True, encoding="utf-8", errors="replace", bufsize=1,
         creationflags=NO_WINDOW,
     )
+    _CUR["proc"] = proc
     tail, buf = [], ""
     for ch in iter(lambda: proc.stdout.read(1), ""):
         if ch in ("\r", "\n"):
@@ -201,8 +205,8 @@ def download_audio(query: str, dest_dir: Path, on_pct=None) -> Path:
     return wavs[0]
 
 
-def separate_stems(audio_path: Path, out_dir: Path, on_pct=None) -> Path:
-    prof = current_profile()
+def separate_stems(audio_path: Path, out_dir: Path, prof=None, on_pct=None) -> Path:
+    prof = prof or current_profile()
     model, segments, overlap = prof["model"], prof["segments"], prof["overlap"]
     # Un modele "bag" (qualite) affiche N barres. On lisse la progression :
     # chaque modele = 1/segments du total.
@@ -263,9 +267,10 @@ def _process(job_id):
         return
     query, final_dir = job["_query"], Path(job["_dir"])
     title = job["title"]
-    prof = current_profile()
+    prof = QUALITY_PROFILES.get(job.get("quality"), current_profile())
     t0 = time.time()
     sep = {"start": None}
+    _CUR["cancel"] = False
     _set(job_id, status="running", phase="download", percent=1, eta=None)
     log(f"▶ Demarrage : '{title}'  (qualite={prof['label']}, modele={prof['model']})")
     try:
@@ -289,7 +294,7 @@ def _process(job_id):
                     eta = round(el * (1 - frac) / frac)
                 _set(job_id, percent=round(pct), eta=eta)
 
-            stem_dir = separate_stems(audio, tmp, on_pct=on_sep)
+            stem_dir = separate_stems(audio, tmp, prof, on_pct=on_sep)
 
             _set(job_id, phase="save", percent=96, eta=0)
             final_dir.mkdir(parents=True, exist_ok=True)
@@ -298,20 +303,52 @@ def _process(job_id):
                 (final_dir / f.name).write_bytes(f.read_bytes())
                 n += 1
     except Exception as e:  # noqa: BLE001
-        log(f"✗ ECHEC '{title}' : {e}")
-        _set(job_id, status="error", error=str(e), percent=100, eta=None)
+        if _CUR.get("cancel"):
+            log(f"⊘ Annule : '{title}'")
+            _set(job_id, status="cancelled", percent=0, eta=None)
+        else:
+            log(f"✗ ECHEC '{title}' : {e}")
+            _set(job_id, status="error", error=str(e), percent=100, eta=None)
         return
     log(f"✓ Termine '{title}' en {_fmt_dur(time.time() - t0)} → {n} stems dans {final_dir}")
     _set(job_id, status="done", percent=100, eta=0, output_dir=str(final_dir))
+
+
+def cancel(job_id) -> dict:
+    """Annule un job : retire de la file s'il attend, sinon stoppe celui en cours."""
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if not job:
+            return {"ok": False, "message": "inconnu"}
+        if job_id in PENDING:
+            PENDING.remove(job_id)
+            job["status"] = "cancelled"
+            log(f"⊘ Retire de la file : '{job['title']}'")
+            return {"ok": True}
+        if ACTIVE["id"] == job_id:
+            _CUR["cancel"] = True
+            proc = _CUR.get("proc")
+    if ACTIVE["id"] == job_id and proc:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+        return {"ok": True}
+    return {"ok": False, "message": "deja termine"}
 
 
 def _worker():
     while True:
         job_id = JOB_QUEUE.get()
         with JOBS_LOCK:
+            cancelled = JOBS.get(job_id, {}).get("status") == "cancelled"
             if job_id in PENDING:
                 PENDING.remove(job_id)
-            ACTIVE["id"] = job_id
+            if not cancelled:
+                ACTIVE["id"] = job_id
+        if cancelled:
+            JOB_QUEUE.task_done()
+            continue
         try:
             _process(job_id)
         except BaseException as e:  # noqa: BLE001 - on veut tout tracer
@@ -338,6 +375,7 @@ def extract():
     if not title:
         return jsonify(error="titre manquant"), 400
 
+    quality = data.get("quality") if data.get("quality") in QUALITY_PROFILES else None
     query = f"{title} {artist}".strip()
     folder = safe_name(f"{artist} - {title}" if artist else title)
     final_dir = output_root() / folder
@@ -346,12 +384,17 @@ def extract():
     with JOBS_LOCK:
         JOBS[job_id] = {"status": "queued", "phase": "queued", "percent": 0,
                         "title": title, "output_dir": None, "error": None, "eta": None,
-                        "_query": query, "_dir": str(final_dir)}
+                        "quality": quality, "_query": query, "_dir": str(final_dir)}
         PENDING.append(job_id)
         position = len(PENDING)
     JOB_QUEUE.put(job_id)
     log(f"➕ En file (#{position}) : '{title}'")
     return jsonify(job_id=job_id, position=position), 202
+
+
+@app.route("/cancel/<job_id>", methods=["POST"])
+def cancel_route(job_id):
+    return jsonify(cancel(job_id))
 
 
 def _job_view(job_id, job):
@@ -371,18 +414,22 @@ def progress(job_id):
         return jsonify(_job_view(job_id, job))
 
 
-@app.route("/queue", methods=["GET"])
-def queue_state():
-    """Etat global de la file (pour l'affichage de l'extension)."""
+def queue_snapshot():
     with JOBS_LOCK:
         active = JOBS.get(ACTIVE["id"]) if ACTIVE["id"] else None
         last = JOBS.get(LAST["id"]) if LAST["id"] else None
-        return jsonify(
-            active=_job_view(ACTIVE["id"], active) if active else None,
-            pending=[JOBS[i]["title"] for i in PENDING if i in JOBS],
-            pending_count=len(PENDING),
-            last=_job_view(LAST["id"], last) if last else None,
-        )
+        return {
+            "active": _job_view(ACTIVE["id"], active) if active else None,
+            "pending": [{"job_id": i, "title": JOBS[i]["title"]} for i in PENDING if i in JOBS],
+            "pending_count": len(PENDING),
+            "last": _job_view(LAST["id"], last) if last else None,
+        }
+
+
+@app.route("/queue", methods=["GET"])
+def queue_state():
+    """Etat global de la file (pour l'affichage de l'extension)."""
+    return jsonify(queue_snapshot())
 
 
 @app.route("/health", methods=["GET"])

@@ -22,7 +22,7 @@ function showTab(name) {
   $all(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.tab === navName));
   $all(".tab").forEach((s) => s.classList.toggle("active", s.id === "tab-" + name));
   if (name === "extensions") loadExtensions();
-  if (name === "server") refreshStatus();
+  if (name === "server") { refreshStatus(); refreshQueue(); }
   if (name === "settings") loadSettings();
 }
 
@@ -61,6 +61,28 @@ async function refreshStatus() {
   $("#footer-label").textContent = running ? "Serveur en ligne" : "Serveur arrete";
   const sb = $(".ext-server-btn");
   if (sb) applyServerBtnState(sb, running);
+}
+
+async function refreshQueue() {
+  if (!api) return;
+  const q = await api.get_queue();
+  const box = $("#queue-box");
+  const rows = [];
+  if (q.active) {
+    const a = q.active;
+    const lbl = a.status === "queued" ? `en file` : `${a.phase || ""} ${a.percent || 0}%`;
+    rows.push(`<div class="q-row q-active"><span class="q-t">▶ ${a.title}</span>
+      <span class="muted">${lbl}</span>
+      <button class="link q-cancel" data-id="${a.job_id}">Annuler</button></div>`);
+  }
+  (q.pending || []).forEach((p) => {
+    rows.push(`<div class="q-row"><span class="q-t">• ${p.title}</span>
+      <button class="link q-cancel" data-id="${p.job_id}">Retirer</button></div>`);
+  });
+  box.innerHTML = rows.length ? rows.join("") : '<span class="muted">File vide.</span>';
+  box.querySelectorAll(".q-cancel").forEach((b) => {
+    b.addEventListener("click", async () => { b.disabled = true; await api.cancel_job(b.dataset.id); refreshQueue(); });
+  });
 }
 
 async function refreshLogs() {
@@ -241,5 +263,8 @@ window.addEventListener("pywebviewready", () => {
   refreshStatus();
   refreshLogs();
   logTimer = setInterval(refreshLogs, 1500);
-  statusTimer = setInterval(refreshStatus, 2500);
+  statusTimer = setInterval(() => {
+    refreshStatus();
+    if ($("#tab-server").classList.contains("active")) refreshQueue();
+  }, 2500);
 });

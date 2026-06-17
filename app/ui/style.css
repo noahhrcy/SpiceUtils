@@ -222,6 +222,11 @@ small.muted { display: block; font-weight: 400; margin-top: 3px; }
 @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(92,240,160,.5)} 70%{box-shadow:0 0 0 9px rgba(92,240,160,0)} 100%{box-shadow:0 0 0 0 rgba(92,240,160,0)} }
 #server-state { font-weight: 600; }
 .logs-title { margin-top: 8px; }
+.q-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.q-row + .q-row { border-top: 1px solid var(--border); }
+.q-row .q-t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-active .q-t { color: var(--mauve); font-weight: 600; }
+.q-cancel { color: #e07be0; }
 .logbox { background: rgba(15,8,23,.7); backdrop-filter: blur(8px);
   border: 1px solid var(--border); border-radius: 14px; padding: 14px; height: 230px;
   overflow-y: auto; font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px;
