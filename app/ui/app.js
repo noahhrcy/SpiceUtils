@@ -42,14 +42,8 @@ const EXTRACT_SVG =
   '<path d="M4 11.5 12 15l8-3.5"/>' +
   '<path d="M12 14v7"/><path d="m8.5 17.5 3.5 3.5 3.5-3.5"/></svg>';
 
-// Icone "stats/tempo" (trace facon pulsation), dans le theme.
-const STATS_SVG =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="#c08bf0" stroke-width="1.8" ' +
-  'stroke-linecap="round" stroke-linejoin="round" width="26" height="26">' +
-  '<path d="M3 12h3.5l2-6 3.5 12 2.2-7 1.6 3H21"/></svg>';
-
 // Icone personnalisee par extension (sinon barres d'egaliseur par defaut).
-const EXT_ICONS = { stemExtractor: EXTRACT_SVG, spiceStats: STATS_SVG };
+const EXT_ICONS = { stemExtractor: EXTRACT_SVG };
 
 // --- Serveur ---
 async function refreshStatus() {
@@ -143,11 +137,10 @@ async function loadExtensions() {
     const optQuality = card.querySelector(".opt-quality");
     if (optFolder && optQuality) {
       const applyCfg = (cfg) => {
-        const name = (cfg.output_dir || "").split(/[\\/]/).filter(Boolean).pop() || cfg.output_dir;
-        optFolder.innerHTML = `<span class="oic">📁</span> ${name}`;
+        optFolder.innerHTML = '<span class="oic">📁</span> Choisir le dossier';
         optFolder.title = "Dossier de sortie : " + cfg.output_dir;
         optQuality.innerHTML = cfg.quality === "fast"
-          ? '<span class="oic">⚡</span> Rapide' : '<span class="oic">✨</span> Qualite';
+          ? '<span class="oic">⚡</span> Mode : Rapide' : '<span class="oic">✨</span> Mode : Qualité';
         optQuality.title = cfg.quality === "fast"
           ? "Extraction rapide (htdemucs)" : "Extraction qualitative (htdemucs_ft, plus lent)";
       };
@@ -196,6 +189,8 @@ async function loadSettings() {
   const s = await api.get_settings();
   $("#set-autostart-app").checked = !!s.autostart_app;
   $("#set-autostart-server").checked = !!s.autostart_server;
+  $("#set-auto-update").checked = !!s.auto_update;
+  $("#app-version").textContent = await api.get_app_version();
 }
 
 $("#set-autostart-app").addEventListener("change", async (ev) => {
@@ -206,7 +201,19 @@ $("#set-autostart-server").addEventListener("change", async (ev) => {
   await api.set_autostart_server(ev.target.checked);
   toast("Reglage enregistre");
 });
+$("#set-auto-update").addEventListener("change", async (ev) => {
+  await api.set_auto_update(ev.target.checked);
+  toast(ev.target.checked ? "Mises a jour auto activees" : "Mises a jour auto desactivees");
+});
+$("#btn-check-update").addEventListener("click", async () => {
+  toast("Verification...");
+  const r = await api.check_update_now();
+  toast(r.available ? `Mise a jour ${r.tag} en cours...` : "SpiceUtils est a jour");
+});
 $("#btn-quit").addEventListener("click", () => api.quit_app());
+
+// Toast declenchable depuis Python (evaluate_js).
+window.spiceToast = (msg) => toast(msg);
 
 // --- Modal de fermeture (appele depuis Python via evaluate_js) ---
 function hideCloseModal() { $("#close-modal").classList.add("hidden"); }

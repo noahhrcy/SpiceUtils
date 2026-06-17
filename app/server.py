@@ -23,7 +23,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.serving import make_server
 
-SERVER_VERSION = "2.3.0"
+SERVER_VERSION = "2.4.0"
 HOST = "127.0.0.1"
 PORT = 8765
 

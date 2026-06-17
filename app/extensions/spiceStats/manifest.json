@@ -1,8 +1,0 @@
-{
-  "id": "spiceStats",
-  "name": "Spice Stats",
-  "description": "Affiche le BPM et la tonalite (key) des morceaux : a cote des titres dans les listes et sur la barre de lecture.",
-  "version": "1.0.0",
-  "author": "SpiceUtils",
-  "file": "spiceStats.js"
-}

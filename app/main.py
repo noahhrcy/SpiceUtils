@@ -17,6 +17,7 @@ import webview
 import server as server_mod
 import settings as settings_mod
 import extensions as ext_mod
+import updater as updater_mod
 
 UI_DIR = Path(__file__).with_name("ui")
 ICON_PNG = Path(__file__).with_name("icon.png")
@@ -111,6 +112,22 @@ class Api:
         s["autostart_server"] = bool(enabled)
         settings_mod.save(s)
         return s
+
+    # Mises a jour
+    def get_app_version(self):
+        return updater_mod.APP_VERSION
+
+    def set_auto_update(self, enabled):
+        s = settings_mod.load()
+        s["auto_update"] = bool(enabled)
+        settings_mod.save(s)
+        return s
+
+    def check_update_now(self):
+        avail, tag = updater_mod.update_available()
+        if avail and updater_mod.download_and_run():
+            threading.Timer(1.5, _quit).start()
+        return {"available": avail, "tag": tag, "current": updater_mod.APP_VERSION}
 
     def open_github(self):
         if GITHUB_URL:
@@ -215,9 +232,25 @@ def on_closing():
     return True
 
 
+def _auto_update_check():
+    try:
+        if not settings_mod.load().get("auto_update"):
+            return
+        avail, tag = updater_mod.update_available()
+        if avail:
+            if window:
+                window.evaluate_js(
+                    "window.spiceToast && window.spiceToast('Mise a jour " + str(tag) + " en cours...')")
+            if updater_mod.download_and_run():
+                _quit()
+    except Exception:
+        pass
+
+
 def on_start():
     _apply_native_icon()
     _start_tray()
+    threading.Thread(target=_auto_update_check, daemon=True).start()
     # Demarrage auto du serveur a l'ouverture, si active dans les reglages.
     try:
         if settings_mod.load().get("autostart_server"):

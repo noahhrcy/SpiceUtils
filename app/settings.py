@@ -20,6 +20,7 @@ RUN_VALUE = "SpiceUtils"
 DEFAULTS = {
     "autostart_app": False,      # lancer SpiceUtils au demarrage du PC
     "autostart_server": False,   # demarrer le serveur a l'ouverture de l'app
+    "auto_update": True,         # verifier/installer les mises a jour au lancement
 }
 
 

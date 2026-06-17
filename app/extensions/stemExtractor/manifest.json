@@ -1,7 +1,7 @@
 {
   "id": "stemExtractor",
   "name": "Stem Extractor",
-  "description": "Ajoute un bouton pour extraire les stems (voix, batterie, basse, autres) du morceau et les enregistrer dans le dossier Downloads.",
+  "description": "Ajoute un bouton pour extraire les stems d'une track (attention : le serveur doit être installé. Cliquez sur le bouton \"Serveur\" juste en dessous).",
   "version": "2.3.0",
   "author": "SpiceUtils",
   "file": "stemExtractor.js"
