@@ -53,6 +53,30 @@ class Api:
         os.startfile(str(server_mod.OUTPUT_ROOT))  # noqa: S606 (Windows)
         return {"ok": True}
 
+    # Options d'extraction (Stem Extractor)
+    def get_extract_config(self):
+        return server_mod.get_config()
+
+    def set_quality(self, mode):
+        return server_mod.set_config(quality=mode)
+
+    def pick_output_dir(self):
+        """Ouvre un selecteur de dossier ; enregistre le choix."""
+        try:
+            dirs = window.create_file_dialog(webview.FOLDER_DIALOG)
+        except Exception:
+            dirs = None
+        if dirs:
+            path = dirs[0] if isinstance(dirs, (list, tuple)) else dirs
+            return server_mod.set_config(output_dir=str(path))
+        return server_mod.get_config()
+
+    def open_output_dir(self):
+        d = server_mod.output_root()
+        d.mkdir(parents=True, exist_ok=True)
+        os.startfile(str(d))
+        return {"ok": True}
+
     # Extensions
     def spicetify_available(self):
         return ext_mod.spicetify_available()
@@ -202,6 +226,22 @@ def on_start():
         pass
 
 
+_instance_mutex = None  # garde une reference (sinon GC -> mutex libere)
+
+
+def acquire_single_instance() -> bool:
+    """Empeche deux instances de SpiceUtils (sinon conflit sur le port 8765)."""
+    global _instance_mutex
+    try:
+        import ctypes
+        ERROR_ALREADY_EXISTS = 183
+        k = ctypes.windll.kernel32
+        _instance_mutex = k.CreateMutexW(None, False, "Global\\SpiceUtilsApp")
+        return k.GetLastError() != ERROR_ALREADY_EXISTS
+    except Exception:
+        return True
+
+
 def _set_app_user_model_id():
     """Identite distincte -> la barre des taches utilise NOTRE icone, pas
     celle de pythonw.exe (sinon une fiche Python s'affiche)."""
@@ -229,6 +269,9 @@ def _apply_native_icon():
 
 def main():
     global window
+    if not acquire_single_instance():
+        # Une instance tourne deja : on ne lance pas de doublon.
+        return
     _set_app_user_model_id()
     window = webview.create_window(
         "SpiceUtils",

@@ -118,6 +118,10 @@ async function loadExtensions() {
       </div>
       ${hasServer ? `
       <div class="ext-extend">
+        <div class="ext-opts">
+          <button class="btn opt-folder" title="Dossier de sortie">Dossier</button>
+          <button class="btn opt-quality">Qualite</button>
+        </div>
         <button class="btn ext-server-btn">Serveur</button>
       </div>` : ""}`;
     const cta = card.querySelector(".ext-cta");
@@ -133,6 +137,32 @@ async function loadExtensions() {
       srvBtn.addEventListener("click", () => showTab("server"));
       const st = await api.get_status();
       applyServerBtnState(srvBtn, st.running);
+    }
+    // Options d'extraction (dossier de sortie + qualite/rapide).
+    const optFolder = card.querySelector(".opt-folder");
+    const optQuality = card.querySelector(".opt-quality");
+    if (optFolder && optQuality) {
+      const applyCfg = (cfg) => {
+        const name = (cfg.output_dir || "").split(/[\\/]/).filter(Boolean).pop() || cfg.output_dir;
+        optFolder.innerHTML = `<span class="oic">📁</span> ${name}`;
+        optFolder.title = "Dossier de sortie : " + cfg.output_dir;
+        optQuality.innerHTML = cfg.quality === "fast"
+          ? '<span class="oic">⚡</span> Rapide' : '<span class="oic">✨</span> Qualite';
+        optQuality.title = cfg.quality === "fast"
+          ? "Extraction rapide (htdemucs)" : "Extraction qualitative (htdemucs_ft, plus lent)";
+      };
+      applyCfg(await api.get_extract_config());
+      optFolder.addEventListener("click", async () => {
+        applyCfg(await api.pick_output_dir());
+        toast("Dossier de sortie mis a jour");
+        refreshStatus();
+      });
+      optQuality.addEventListener("click", async () => {
+        const cur = await api.get_extract_config();
+        const cfg = await api.set_quality(cur.quality === "fast" ? "quality" : "fast");
+        applyCfg(cfg);
+        toast(cfg.quality === "fast" ? "Mode rapide" : "Mode qualite");
+      });
     }
     root.appendChild(card);
   });

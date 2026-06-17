@@ -10,32 +10,80 @@ Pilote par SpiceUtils via la classe ServerController (start/stop a la demande).
 """
 
 import os
+import json
 import re
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.serving import make_server
 
-SERVER_VERSION = "2.2.0"
+SERVER_VERSION = "2.3.0"
 HOST = "127.0.0.1"
 PORT = 8765
 
 APP_DATA = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SpiceUtils"
 LOG_FILE = APP_DATA / "server.log"
 
-DOWNLOADS = Path.home() / "Downloads"
-OUTPUT_ROOT = DOWNLOADS / "Stems"
+# --- Configuration (dossier de sortie + qualite), persistee --------------------
+CONFIG_FILE = APP_DATA / "config.json"
+DEFAULT_OUTPUT = str(Path.home() / "Downloads" / "Stems")
 
-# htdemucs_ft = variante "fine-tuned" : meilleure qualite (bag de 4 modeles,
-# ~4x plus lent que htdemucs). overlap 0.5 affine encore la separation.
-DEMUCS_MODEL = "htdemucs_ft"
-DEMUCS_SEGMENTS = 4   # htdemucs_ft = bag de 4 modeles (4 barres de progression)
-DEMUCS_OVERLAP = "0.5"
+# Deux profils : "quality" (htdemucs_ft, bag de 4, overlap 0.5) et "fast"
+# (htdemucs, 1 modele, overlap 0.25, ~4x plus rapide).
+QUALITY_PROFILES = {
+    "quality": {"model": "htdemucs_ft", "segments": 4, "overlap": "0.5", "label": "Qualite"},
+    "fast":    {"model": "htdemucs",    "segments": 1, "overlap": "0.25", "label": "Rapide"},
+}
+
+_config = {"output_dir": DEFAULT_OUTPUT, "quality": "quality"}
+
+
+def load_config():
+    try:
+        _config.update(json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig")))
+    except (OSError, ValueError):
+        pass
+    if _config.get("quality") not in QUALITY_PROFILES:
+        _config["quality"] = "quality"
+
+
+def save_config():
+    APP_DATA.mkdir(parents=True, exist_ok=True)
+    CONFIG_FILE.write_text(json.dumps(
+        {"output_dir": _config["output_dir"], "quality": _config["quality"]},
+        indent=2), encoding="utf-8")
+
+
+def get_config():
+    p = QUALITY_PROFILES[_config["quality"]]
+    return {"output_dir": _config["output_dir"], "quality": _config["quality"],
+            "quality_label": p["label"]}
+
+
+def set_config(output_dir=None, quality=None):
+    if output_dir:
+        _config["output_dir"] = output_dir
+    if quality in QUALITY_PROFILES:
+        _config["quality"] = quality
+    save_config()
+    return get_config()
+
+
+def output_root() -> Path:
+    return Path(_config["output_dir"])
+
+
+def current_profile() -> dict:
+    return QUALITY_PROFILES[_config["quality"]]
+
+
+load_config()
 
 # Sous pythonw.exe, sys.executable pointe pythonw : on bascule sur python.exe
 # pour les sous-processus (sinon sys.stdout=None fait planter demucs/tqdm).
@@ -57,7 +105,11 @@ def log(msg: str):
             f.write(line + "\n")
     except OSError:
         pass
-    print(line)
+    # Sous pythonw, sys.stdout vaut None -> print() leverait. On protege.
+    try:
+        print(line)
+    except Exception:
+        pass
 
 
 def ensure_ffmpeg_on_path():
@@ -150,8 +202,10 @@ def download_audio(query: str, dest_dir: Path, on_pct=None) -> Path:
 
 
 def separate_stems(audio_path: Path, out_dir: Path, on_pct=None) -> Path:
-    # htdemucs_ft affiche 4 barres (un modele apres l'autre). On lisse la
-    # progression globale : chaque modele = 1/DEMUCS_SEGMENTS du total.
+    prof = current_profile()
+    model, segments, overlap = prof["model"], prof["segments"], prof["overlap"]
+    # Un modele "bag" (qualite) affiche N barres. On lisse la progression :
+    # chaque modele = 1/segments du total.
     state = {"seg": -1, "last": 101.0}
 
     def wrapped(p):
@@ -160,15 +214,15 @@ def separate_stems(audio_path: Path, out_dir: Path, on_pct=None) -> Path:
         state["last"] = p
         if on_pct:
             seg = max(state["seg"], 0)
-            overall = (seg + p / 100.0) / DEMUCS_SEGMENTS * 100.0
+            overall = (seg + p / 100.0) / segments * 100.0
             on_pct(min(overall, 100.0))
 
     _run_stream([
-        PYTHON_EXE, "-m", "demucs", "-n", DEMUCS_MODEL,
-        "--overlap", DEMUCS_OVERLAP,
+        PYTHON_EXE, "-m", "demucs", "-n", model,
+        "--overlap", overlap,
         "-o", str(out_dir), str(audio_path),
     ], "demucs", wrapped)
-    stem_dir = out_dir / DEMUCS_MODEL / audio_path.stem
+    stem_dir = out_dir / model / audio_path.stem
     if not stem_dir.exists():
         raise RuntimeError("Demucs n'a pas genere les stems attendus")
     return stem_dir
@@ -198,29 +252,57 @@ def _set(job_id, **kw):
             JOBS[job_id].update(kw)
 
 
+def _fmt_dur(s):
+    s = int(s)
+    return f"{s // 60}m{s % 60:02d}s" if s >= 60 else f"{s}s"
+
+
 def _process(job_id):
     job = JOBS.get(job_id)
     if not job:
         return
     query, final_dir = job["_query"], Path(job["_dir"])
-    _set(job_id, status="running", phase="download", percent=1)
-    log(f"Extraction : {query!r}")
+    title = job["title"]
+    prof = current_profile()
+    t0 = time.time()
+    sep = {"start": None}
+    _set(job_id, status="running", phase="download", percent=1, eta=None)
+    log(f"▶ Demarrage : '{title}'  (qualite={prof['label']}, modele={prof['model']})")
     try:
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
+
+            t_dl = time.time()
             audio = download_audio(query, tmp, on_pct=lambda p: _set(job_id, percent=round(p * 0.25)))
-            log(f"Audio telecharge : {audio.name}")
+            log(f"  ↓ Audio recupere en {_fmt_dur(time.time() - t_dl)} ({audio.name})")
+
             _set(job_id, phase="separate", percent=25)
-            stem_dir = separate_stems(audio, tmp, on_pct=lambda p: _set(job_id, percent=round(25 + p * 0.70)))
-            _set(job_id, phase="save", percent=96)
+            log(f"  ♫ Separation des stems ({prof['model']}, overlap {prof['overlap']})...")
+            sep["start"] = time.time()
+
+            def on_sep(p):
+                pct = 25 + p * 0.70
+                eta = None
+                frac = p / 100.0
+                if frac > 0.03:
+                    el = time.time() - sep["start"]
+                    eta = round(el * (1 - frac) / frac)
+                _set(job_id, percent=round(pct), eta=eta)
+
+            stem_dir = separate_stems(audio, tmp, on_pct=on_sep)
+
+            _set(job_id, phase="save", percent=96, eta=0)
+            final_dir.mkdir(parents=True, exist_ok=True)
+            n = 0
             for f in stem_dir.glob("*.wav"):
                 (final_dir / f.name).write_bytes(f.read_bytes())
+                n += 1
     except Exception as e:  # noqa: BLE001
-        log(f"ECHEC : {e}")
-        _set(job_id, status="error", error=str(e), percent=100)
+        log(f"✗ ECHEC '{title}' : {e}")
+        _set(job_id, status="error", error=str(e), percent=100, eta=None)
         return
-    log(f"Termine -> {final_dir}")
-    _set(job_id, status="done", percent=100, output_dir=str(final_dir))
+    log(f"✓ Termine '{title}' en {_fmt_dur(time.time() - t0)} → {n} stems dans {final_dir}")
+    _set(job_id, status="done", percent=100, eta=0, output_dir=str(final_dir))
 
 
 def _worker():
@@ -232,6 +314,11 @@ def _worker():
             ACTIVE["id"] = job_id
         try:
             _process(job_id)
+        except BaseException as e:  # noqa: BLE001 - on veut tout tracer
+            import traceback
+            log(f"✗ WORKER ERREUR ({job_id}) : {e}")
+            log(traceback.format_exc())
+            _set(job_id, status="error", error=str(e), percent=100)
         finally:
             with JOBS_LOCK:
                 ACTIVE["id"] = None
@@ -253,18 +340,17 @@ def extract():
 
     query = f"{title} {artist}".strip()
     folder = safe_name(f"{artist} - {title}" if artist else title)
-    final_dir = OUTPUT_ROOT / folder
-    final_dir.mkdir(parents=True, exist_ok=True)
+    final_dir = output_root() / folder
 
     job_id = uuid.uuid4().hex[:12]
     with JOBS_LOCK:
         JOBS[job_id] = {"status": "queued", "phase": "queued", "percent": 0,
-                        "title": title, "output_dir": None, "error": None,
+                        "title": title, "output_dir": None, "error": None, "eta": None,
                         "_query": query, "_dir": str(final_dir)}
         PENDING.append(job_id)
         position = len(PENDING)
     JOB_QUEUE.put(job_id)
-    log(f"En file ({position}) : {title}")
+    log(f"➕ En file (#{position}) : '{title}'")
     return jsonify(job_id=job_id, position=position), 202
 
 
@@ -301,7 +387,7 @@ def queue_state():
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify(status="up", output_root=str(OUTPUT_ROOT))
+    return jsonify(status="up", output_root=str(output_root()))
 
 
 @app.route("/version", methods=["GET"])
@@ -327,7 +413,7 @@ class ServerController:
             if self.is_running():
                 return {"ok": True, "message": "deja demarre"}
             ensure_ffmpeg_on_path()
-            OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+            output_root().mkdir(parents=True, exist_ok=True)
             try:
                 self._srv = make_server(HOST, PORT, app, threaded=True)
             except OSError as e:
@@ -337,7 +423,9 @@ class ServerController:
                 target=self._srv.serve_forever, daemon=True
             )
             self._thread.start()
-            log(f"Serveur demarre sur http://{HOST}:{PORT}")
+            cfg = get_config()
+            log(f"● Serveur v{SERVER_VERSION} demarre sur http://{HOST}:{PORT}")
+            log(f"  sortie : {cfg['output_dir']}  |  qualite : {cfg['quality_label']}")
             return {"ok": True, "message": "demarre"}
 
     def stop(self) -> dict:
@@ -357,7 +445,8 @@ class ServerController:
             "host": HOST,
             "port": PORT,
             "version": SERVER_VERSION,
-            "output_root": str(OUTPUT_ROOT),
+            "output_root": str(output_root()),
+            "config": get_config(),
         }
 
 

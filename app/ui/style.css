@@ -172,10 +172,14 @@ small.muted { display: block; font-weight: 400; margin-top: 3px; }
   box-shadow: 0 8px 30px rgba(0,0,0,.25); transition: transform .25s, box-shadow .25s, border-color .25s; }
 .ext-main { display: flex; align-items: center; gap: 18px; padding: 18px 21px; }
 /* Bas rattache a la carte (prolongement) : separateur + fond teinte. */
-.ext-extend { display: flex; align-items: center; justify-content: flex-end; gap: 16px;
+.ext-extend { display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 13px 21px; border-top: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(157,92,255,.05), rgba(157,92,255,.12)); }
+  background: linear-gradient(180deg, rgba(157,92,255,.05), rgba(157,92,255,.12)); flex-wrap: wrap; }
 .ext-extend .btn { margin-top: 0; white-space: nowrap; }
+.ext-opts { display: flex; gap: 8px; flex-wrap: wrap; }
+.ext-opts .btn { padding: 7px 13px; font-size: 12.5px; max-width: 240px; overflow: hidden;
+  text-overflow: ellipsis; }
+.ext-opts .oic { opacity: .9; margin-right: 2px; }
 /* Etat du bouton Serveur : vert si demarre, rouge (telechargement) si arrete. */
 .ext-server-btn.srv-on { background: linear-gradient(135deg,#2f9e6a,#1f7a50) !important;
   border: none !important; color: #fff; box-shadow: 0 4px 14px rgba(47,158,106,.4); }

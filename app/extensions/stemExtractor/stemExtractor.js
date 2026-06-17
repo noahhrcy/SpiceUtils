@@ -61,6 +61,12 @@
       #stemx-progress .sx-fill{height:100%;width:0%;border-radius:5px;
         background:linear-gradient(90deg,#9d5cff,#e07be0);transition:width .35s ease}
       #stemx-progress .sx-phase{font-size:11px;color:#9a86b5;margin-top:6px}
+      #stemx-progress .sx-list{margin-top:8px;border-top:1px solid rgba(157,92,255,.2);padding-top:6px;
+        display:none;max-height:96px;overflow-y:auto}
+      #stemx-progress .sx-list.show{display:block}
+      #stemx-progress .sx-list-h{font-size:10px;color:#7e6a99;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+      #stemx-progress .sx-list-i{font-size:11px;color:#c8b8e6;padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #stemx-progress .sx-list-i::before{content:"•";color:#9d5cff;margin-right:6px}
       #stemx-progress.err{border-color:#c0445c}
       #stemx-progress.err .sx-fill{background:#c0445c}`;
     const style = document.createElement("style");
@@ -73,7 +79,8 @@
       '<div class="sx-row"><div class="sx-ic"><i></i><i></i><i></i></div>' +
       '<span class="sx-title"></span><span class="sx-pct">0%</span></div>' +
       '<div class="sx-bar"><div class="sx-fill"></div></div>' +
-      '<div class="sx-phase"></div>';
+      '<div class="sx-phase"></div>' +
+      '<div class="sx-list"><div class="sx-list-h"></div></div>';
     document.body.appendChild(el);
     progressEl = el;
     return el;
@@ -103,8 +110,28 @@
       progressEl.classList.add("err");
       progressEl.querySelector(".sx-phase").textContent = msg || "Echec";
     }
+    const list = progressEl.querySelector(".sx-list");
+    if (list) list.classList.remove("show");
     const el = progressEl;
     setTimeout(() => { el.classList.remove("show"); }, isError ? 3500 : 1400);
+  }
+
+  function fmtEta(sec) {
+    if (sec == null || sec < 0) return "";
+    sec = Math.round(sec);
+    if (sec >= 60) return `~${Math.floor(sec / 60)}m${String(sec % 60).padStart(2, "0")}s restantes`;
+    return `~${sec}s restantes`;
+  }
+
+  // Affiche la liste des morceaux en attente sous la barre.
+  function renderQueueList(pending) {
+    if (!progressEl) return;
+    const list = progressEl.querySelector(".sx-list");
+    if (!pending || pending.length === 0) { list.classList.remove("show"); return; }
+    let html = `<div class="sx-list-h">En attente (${pending.length})</div>`;
+    pending.forEach((t) => { html += `<div class="sx-list-i">${t}</div>`; });
+    list.innerHTML = html;
+    list.classList.add("show");
   }
 
   let queuePoller = null;
@@ -166,23 +193,29 @@
         finishProgress(true, "Connexion perdue");
         return;
       }
-      const extra = q.pending_count > 0 ? `  ·  +${q.pending_count} en attente` : "";
       if (q.active) {
         ensureProgressUI();
         progressEl.classList.remove("err");
         progressEl.classList.add("show");
         progressEl.querySelector(".sx-title").textContent = q.active.title;
+        let phase;
         if (q.active.status === "queued") {
           updateProgress(0);
-          progressEl.querySelector(".sx-phase").textContent = `En file (#${q.active.position})` + extra;
+          phase = `En file (#${q.active.position})`;
         } else {
           updateProgress(q.active.percent || 0);
-          progressEl.querySelector(".sx-phase").textContent =
-            (PHASES[q.active.phase] || q.active.phase || "") + extra;
+          phase = PHASES[q.active.phase] || q.active.phase || "";
+          const eta = fmtEta(q.active.eta);
+          if (eta) phase += "  ·  " + eta;
         }
+        progressEl.querySelector(".sx-phase").textContent = phase;
+        renderQueueList(q.pending);
       } else if (q.pending_count > 0) {
         // transition entre deux morceaux
-        progressEl && (progressEl.querySelector(".sx-phase").textContent = "En attente…" + extra);
+        if (progressEl) {
+          progressEl.querySelector(".sx-phase").textContent = "En attente…";
+          renderQueueList(q.pending);
+        }
       } else {
         // file vide -> on a fini
         clearInterval(queuePoller); queuePoller = null;
