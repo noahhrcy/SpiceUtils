@@ -1,8 +1,13 @@
 # ============================================================================
 #  SpiceUtils - post-install (appele par setup.exe / Inno Setup)
 #
-#  Installe Python + FFmpeg (winget) si absents, cree le venv + dependances.
-#  PAS de tache planifiee : le demarrage auto est gere DANS l'app (registre Run).
+#  Installation AUTONOME par poste, sans winget ni MSI (donc jamais de dialogue
+#  "ressource reseau") :
+#    - Python autonome (python-build-standalone) extrait dans {app}\python
+#    - FFmpeg statique extrait dans {app}\ffmpeg
+#    - venv + dependances (pip, avec retries reseau)
+#
+#  Tout est journalise dans %LOCALAPPDATA%\SpiceUtils\install.log
 #
 #  Usage : postinstall.ps1 -AppDir "C:\Program Files\SpiceUtils"
 # ============================================================================
@@ -13,98 +18,87 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Src = Join-Path $AppDir "app"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# Journalise toute l'installation dans un fichier (pour diagnostiquer les echecs
-# meme apres fermeture de la console).
+$Src   = Join-Path $AppDir "app"
+$PyDir = Join-Path $AppDir "python"
+$FfDir = Join-Path $AppDir "ffmpeg"
+$Tmp   = Join-Path $env:TEMP ("spiceutils_" + [guid]::NewGuid().ToString("N").Substring(0,8))
+New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
+
 $LogDir = Join-Path $env:LOCALAPPDATA "SpiceUtils"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
-$LogFile = Join-Path $LogDir "install.log"
-try { Start-Transcript -Path $LogFile -Force | Out-Null } catch {}
+try { Start-Transcript -Path (Join-Path $LogDir "install.log") -Force | Out-Null } catch {}
 
 function Step($m) { Write-Host "`n==> $m" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "    [ok] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "    [!] $m"  -ForegroundColor Yellow }
 
-function Have($cmd) { $null = Get-Command $cmd -ErrorAction SilentlyContinue; return $? }
-
-function Refresh-Path {
-    $m = [Environment]::GetEnvironmentVariable("Path", "Machine")
-    $u = [Environment]::GetEnvironmentVariable("Path", "User")
-    $env:Path = "$m;$u"
-}
-
-function Resolve-RealPython {
-    foreach ($c in (Get-Command python, python3 -ErrorAction SilentlyContinue)) {
-        $p = $c.Source
-        if ($p -and ($p -notlike "*WindowsApps*")) {
-            try { & $p --version *> $null; if ($?) { return $p } } catch {}
-        }
+# Telechargement robuste via curl (suit les redirections, retries reseau).
+function Download($url, $out) {
+    Write-Host "    telechargement: $url"
+    curl.exe -L --retry 5 --retry-delay 3 --connect-timeout 30 --fail -o $out $url
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $out)) {
+        throw "Echec du telechargement (reseau ?) : $url"
     }
-    $cands = @(
-        "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe",
-        "$env:ProgramFiles\Python3*\python.exe",
-        "C:\Python3*\python.exe"
-    )
-    foreach ($glob in $cands) {
-        $hit = Get-ChildItem $glob -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($hit) { return $hit.FullName }
-    }
-    return $null
 }
 
 Write-Host "==================================================" -ForegroundColor Magenta
-Write-Host "  SpiceUtils - installation des dependances" -ForegroundColor Magenta
+Write-Host "  SpiceUtils - installation (autonome, sans winget)" -ForegroundColor Magenta
 Write-Host "  Cette fenetre se fermera automatiquement a la fin." -ForegroundColor Magenta
-Write-Host "  L'installation de torch/demucs peut prendre plusieurs minutes." -ForegroundColor Magenta
 Write-Host "==================================================" -ForegroundColor Magenta
 
-if (-not (Have winget)) {
-    throw "winget introuvable. Installe 'App Installer' (Microsoft Store) puis relance setup.exe."
-}
-
-# --- Python ---
-Step "Python"
-$Python = Resolve-RealPython
-if (-not $Python) {
-    Warn "Installation de Python via winget..."
-    winget install --id Python.Python.3.12 -e --source winget `
-        --accept-package-agreements --accept-source-agreements --silent
-    Refresh-Path
-    $Python = Resolve-RealPython
-    if (-not $Python) {
-        # winget peut croire Python deja installe (registration residuelle) alors
-        # que les fichiers manquent : on force une vraie reinstallation.
-        Warn "Python toujours absent - reinstallation forcee (--force)..."
-        winget install --id Python.Python.3.12 -e --source winget `
-            --accept-package-agreements --accept-source-agreements --silent --force
-        Refresh-Path
-        $Python = Resolve-RealPython
+# --- 1) Python autonome ------------------------------------------------------
+Step "Python autonome"
+$PyExe = Join-Path $PyDir "python.exe"
+if (-not (Test-Path $PyExe)) {
+    # URL via l'API GitHub (derniere 3.12 install_only), repli sur une URL fixe.
+    $url = $null
+    try {
+        $rel = Invoke-RestMethod "https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest" `
+            -Headers @{ "User-Agent" = "spiceutils" } -TimeoutSec 30
+        $asset = $rel.assets | Where-Object {
+            $_.name -match '^cpython-3\.12\.\d+\+.*-x86_64-pc-windows-msvc-install_only\.tar\.gz$'
+        } | Select-Object -First 1
+        if ($asset) { $url = $asset.browser_download_url }
+    } catch { Warn "API GitHub indisponible, URL de repli." }
+    if (-not $url) {
+        $url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260610/cpython-3.12.13%2B20260610-x86_64-pc-windows-msvc-install_only.tar.gz"
     }
-    if (-not $Python) { throw "Python introuvable apres installation." }
+    $arc = Join-Path $Tmp "python.tar.gz"
+    Download $url $arc
+    # L'archive "install_only" se decompresse en un dossier "python/".
+    tar.exe -xf $arc -C $AppDir
+    if (-not (Test-Path $PyExe)) { throw "Python autonome introuvable apres extraction." }
 }
-Ok "Python : $Python"
+& $PyExe --version
+Ok "Python : $PyExe"
 
-# --- FFmpeg ---
+# --- 2) FFmpeg statique ------------------------------------------------------
 Step "FFmpeg"
-if (-not (Have ffmpeg)) {
-    Warn "Installation de FFmpeg via winget..."
-    winget install --id Gyan.FFmpeg -e --source winget `
-        --accept-package-agreements --accept-source-agreements --silent
-    Refresh-Path
+$FfExe = Join-Path $FfDir "bin\ffmpeg.exe"
+if (-not (Test-Path $FfExe)) {
+    $zip = Join-Path $Tmp "ffmpeg.zip"
+    Download "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" $zip
+    Expand-Archive -Path $zip -DestinationPath $Tmp -Force
+    $inner = Get-ChildItem $Tmp -Directory | Where-Object { $_.Name -like "ffmpeg-*win64*" } | Select-Object -First 1
+    if (-not $inner) { throw "Dossier FFmpeg introuvable apres extraction." }
+    $dstBin = Join-Path $FfDir "bin"
+    New-Item -ItemType Directory -Force -Path $dstBin | Out-Null
+    Copy-Item (Join-Path $inner.FullName "bin\*") -Destination $dstBin -Recurse -Force
+    if (-not (Test-Path $FfExe)) { throw "ffmpeg.exe introuvable apres extraction." }
 }
-if (Have ffmpeg) { Ok "FFmpeg present" } else { Warn "FFmpeg pas encore dans le PATH (OK apres reconnexion)." }
+Ok "FFmpeg : $FfExe"
 
-# --- venv + dependances ---
+# --- 3) venv + dependances ---------------------------------------------------
 Step "Environnement Python + dependances (plusieurs minutes)"
 $Venv       = Join-Path $Src ".venv"
 $VenvPython = Join-Path $Venv "Scripts\python.exe"
 $Req        = Join-Path $Src "requirements.txt"
-if (-not (Test-Path $VenvPython)) { & $Python -m venv $Venv }
+if (-not (Test-Path $VenvPython)) { & $PyExe -m venv $Venv }
 & $VenvPython -m pip install --upgrade pip --retries 5 --timeout 60 --quiet
 
-# Telechargements volumineux (torch ~200 Mo) : on tolere les coupures reseau
-# avec des retries pip + plusieurs tentatives globales.
+# Telechargements volumineux (torch ~200 Mo) : on tolere les coupures reseau.
 $ok = $false
 for ($try = 1; $try -le 3; $try++) {
     Write-Host "    Installation des paquets (tentative $try/3)..." -ForegroundColor Cyan
@@ -114,9 +108,10 @@ for ($try = 1; $try -le 3; $try++) {
     Start-Sleep -Seconds 8
 }
 if (-not $ok) {
-    throw "Echec du telechargement des dependances apres 3 tentatives. Verifiez la connexion Internet (acces a pypi.org / files.pythonhosted.org) puis relancez l'installateur. Details : $LogFile"
+    throw "Echec du telechargement des dependances apres 3 tentatives. Verifiez la connexion (acces a pypi.org / files.pythonhosted.org) puis relancez l'installateur."
 }
 Ok "Dependances installees"
 
+Remove-Item $Tmp -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "`n=== SpiceUtils pret. ===" -ForegroundColor Green
 try { Stop-Transcript | Out-Null } catch {}

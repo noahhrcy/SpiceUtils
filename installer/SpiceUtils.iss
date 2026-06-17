@@ -81,6 +81,8 @@ Filename: "powershell.exe"; \
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\app\.venv"
 Type: filesandordirs; Name: "{app}\app\__pycache__"
+Type: filesandordirs; Name: "{app}\python"
+Type: filesandordirs; Name: "{app}\ffmpeg"
 
 [Code]
 var

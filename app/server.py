@@ -60,6 +60,13 @@ def ensure_ffmpeg_on_path():
     """Localise FFmpeg (installe par winget) et l'ajoute au PATH du process."""
     from shutil import which
 
+    # FFmpeg local a l'app (installe par postinstall) : prioritaire.
+    app_ffmpeg = Path(__file__).resolve().parent.parent / "ffmpeg" / "bin"
+    if (app_ffmpeg / "ffmpeg.exe").exists():
+        os.environ["PATH"] = str(app_ffmpeg) + os.pathsep + os.environ.get("PATH", "")
+        log(f"FFmpeg (local app) ajoute au PATH : {app_ffmpeg}")
+        return
+
     if which("ffmpeg") and which("ffprobe"):
         return
 
