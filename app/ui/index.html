@@ -31,7 +31,23 @@
       <!-- Accueil -->
       <section class="tab active" id="tab-home">
         <div class="home-hero">
-          <img class="home-logo" src="../icon.png" alt="SpiceUtils" />
+          <svg class="home-logo" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SpiceUtils">
+            <defs>
+              <linearGradient id="lgbg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#2a1740"/><stop offset="1" stop-color="#3c246e"/>
+              </linearGradient>
+              <linearGradient id="lgbar" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#e07be0"/><stop offset="1" stop-color="#9d5cff"/>
+              </linearGradient>
+            </defs>
+            <rect x="6" y="6" width="244" height="244" rx="56" fill="url(#lgbg)"/>
+            <g fill="url(#lgbar)">
+              <rect x="50" y="150" width="28" height="56" rx="13"/>
+              <rect x="92" y="84"  width="28" height="122" rx="13"/>
+              <rect x="134" y="58" width="28" height="148" rx="13"/>
+              <rect x="176" y="116" width="28" height="90" rx="13"/>
+            </g>
+          </svg>
           <h1 class="home-title">SpiceUtils</h1>
           <p class="muted">Votre hub d'extensions Spicetify.</p>
           <div class="home-actions">

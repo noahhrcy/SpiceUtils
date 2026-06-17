@@ -42,6 +42,15 @@ const EXTRACT_SVG =
   '<path d="M4 11.5 12 15l8-3.5"/>' +
   '<path d="M12 14v7"/><path d="m8.5 17.5 3.5 3.5 3.5-3.5"/></svg>';
 
+// Icone "stats/tempo" (trace facon pulsation), dans le theme.
+const STATS_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="#c08bf0" stroke-width="1.8" ' +
+  'stroke-linecap="round" stroke-linejoin="round" width="26" height="26">' +
+  '<path d="M3 12h3.5l2-6 3.5 12 2.2-7 1.6 3H21"/></svg>';
+
+// Icone personnalisee par extension (sinon barres d'egaliseur par defaut).
+const EXT_ICONS = { stemExtractor: EXTRACT_SVG, spiceStats: STATS_SVG };
+
 // --- Serveur ---
 async function refreshStatus() {
   if (!api) return;
@@ -95,12 +104,11 @@ async function loadExtensions() {
     card.className = "ext-card";
     // Stem Extractor depend du serveur : on prolonge sa carte d'un bas dedie.
     const hasServer = e.id === "stemExtractor";
-    const iconHtml = e.id === "stemExtractor"
-      ? EXTRACT_SVG
-      : "<span></span><span></span><span></span><span></span>";
+    const customIcon = EXT_ICONS[e.id];
+    const iconHtml = customIcon || "<span></span><span></span><span></span><span></span>";
     card.innerHTML = `
       <div class="ext-main">
-        <div class="ext-icon${e.id === "stemExtractor" ? " svg" : ""}">${iconHtml}</div>
+        <div class="ext-icon${customIcon ? " svg" : ""}">${iconHtml}</div>
         <div class="ext-info">
           <div><span class="name">${e.name}</span><span class="ver">v${e.version}</span>
             ${e.installed ? '<span class="badge">Installee</span>' : ""}</div>

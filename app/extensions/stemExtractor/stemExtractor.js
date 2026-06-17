@@ -107,6 +107,8 @@
     setTimeout(() => { el.classList.remove("show"); }, isError ? 3500 : 1400);
   }
 
+  let queuePoller = null;
+
   async function extractStems(uris) {
     if (!backendReady) {
       Spicetify.showNotification(
@@ -126,7 +128,6 @@
       return;
     }
 
-    showProgress(meta.title);
     try {
       const r = await fetch(`${SERVER_URL}/extract`, {
         method: "POST",
@@ -134,37 +135,67 @@
         body: JSON.stringify(meta),
       });
       if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
-      const { job_id } = await r.json();
-      pollProgress(job_id, meta.title);
+      const data = await r.json();
+      ensureProgressUI();
+      showProgress(meta.title);
+      Spicetify.showNotification(
+        data.position > 1
+          ? `Ajoute a la file (#${data.position}) : ${meta.title}`
+          : `Extraction : ${meta.title}`
+      );
+      startQueuePoller();
     } catch (e) {
       console.error("[StemExtractor]", e);
-      updateProgress(0, "save");
+      ensureProgressUI();
+      showProgress(meta.title);
       finishProgress(true, "Le serveur repond-il ?");
     }
   }
 
-  function pollProgress(jobId, title) {
-    const timer = setInterval(async () => {
+  // Poll global de la file : affiche le morceau en cours + le nombre en attente.
+  function startQueuePoller() {
+    if (queuePoller) return;
+    queuePoller = setInterval(async () => {
+      let q;
       try {
-        const r = await fetch(`${SERVER_URL}/progress/${jobId}`);
-        if (!r.ok) throw new Error("progress KO");
-        const p = await r.json();
-        updateProgress(p.percent || 0, p.phase);
-        if (p.status === "done") {
-          clearInterval(timer);
-          updateProgress(100, "save");
-          finishProgress(false);
-          Spicetify.showNotification(`Stems prets ✓ ${title}`);
-        } else if (p.status === "error") {
-          clearInterval(timer);
-          finishProgress(true, p.error ? p.error.slice(0, 60) : "Echec");
-          Spicetify.showNotification("Echec de l'extraction des stems", true);
-        }
+        const r = await fetch(`${SERVER_URL}/queue`);
+        if (!r.ok) throw new Error("queue KO");
+        q = await r.json();
       } catch (e) {
-        clearInterval(timer);
+        clearInterval(queuePoller); queuePoller = null;
         finishProgress(true, "Connexion perdue");
+        return;
       }
-    }, 600);
+      const extra = q.pending_count > 0 ? `  ·  +${q.pending_count} en attente` : "";
+      if (q.active) {
+        ensureProgressUI();
+        progressEl.classList.remove("err");
+        progressEl.classList.add("show");
+        progressEl.querySelector(".sx-title").textContent = q.active.title;
+        if (q.active.status === "queued") {
+          updateProgress(0);
+          progressEl.querySelector(".sx-phase").textContent = `En file (#${q.active.position})` + extra;
+        } else {
+          updateProgress(q.active.percent || 0);
+          progressEl.querySelector(".sx-phase").textContent =
+            (PHASES[q.active.phase] || q.active.phase || "") + extra;
+        }
+      } else if (q.pending_count > 0) {
+        // transition entre deux morceaux
+        progressEl && (progressEl.querySelector(".sx-phase").textContent = "En attente…" + extra);
+      } else {
+        // file vide -> on a fini
+        clearInterval(queuePoller); queuePoller = null;
+        if (q.last && q.last.status === "error") {
+          finishProgress(true, q.last.error ? q.last.error.slice(0, 60) : "Echec");
+          Spicetify.showNotification("Echec de l'extraction des stems", true);
+        } else {
+          updateProgress(100);
+          finishProgress(false);
+          Spicetify.showNotification("Stems prets ✓");
+        }
+      }
+    }, 700);
   }
 
   const STEM_ICON =

@@ -118,8 +118,8 @@ small.muted { display: block; font-weight: 400; margin-top: 3px; }
 /* ============ ACCUEIL ============ */
 .home-hero { display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center; min-height: calc(100vh - 64px); }
-.home-logo { width: 132px; height: 132px; border-radius: 30px;
-  box-shadow: 0 18px 50px rgba(126,63,224,.45), 0 0 60px rgba(157,92,255,.35);
+.home-logo { width: 134px; height: 134px;
+  filter: drop-shadow(0 16px 38px rgba(126,63,224,.55)) drop-shadow(0 0 30px rgba(157,92,255,.4));
   animation: floatLogo 5s ease-in-out infinite; }
 @keyframes floatLogo { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }
 .home-title { font-size: 40px; margin: 20px 0 2px;

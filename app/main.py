@@ -21,7 +21,7 @@ import extensions as ext_mod
 UI_DIR = Path(__file__).with_name("ui")
 ICON_PNG = Path(__file__).with_name("icon.png")
 ICON_ICO = Path(__file__).with_name("icon.ico")
-GITHUB_URL = ""  # a renseigner plus tard (page du repo)
+GITHUB_URL = "https://github.com/noahhrcy/SpiceUtils"
 
 server = server_mod.ServerController()
 window = None

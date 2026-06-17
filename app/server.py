@@ -21,7 +21,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.serving import make_server
 
-SERVER_VERSION = "2.1.0"
+SERVER_VERSION = "2.2.0"
 HOST = "127.0.0.1"
 PORT = 8765
 
@@ -31,7 +31,11 @@ LOG_FILE = APP_DATA / "server.log"
 DOWNLOADS = Path.home() / "Downloads"
 OUTPUT_ROOT = DOWNLOADS / "Stems"
 
-DEMUCS_MODEL = "htdemucs"  # 4 stems : vocals / drums / bass / other
+# htdemucs_ft = variante "fine-tuned" : meilleure qualite (bag de 4 modeles,
+# ~4x plus lent que htdemucs). overlap 0.5 affine encore la separation.
+DEMUCS_MODEL = "htdemucs_ft"
+DEMUCS_SEGMENTS = 4   # htdemucs_ft = bag de 4 modeles (4 barres de progression)
+DEMUCS_OVERLAP = "0.5"
 
 # Sous pythonw.exe, sys.executable pointe pythonw : on bascule sur python.exe
 # pour les sous-processus (sinon sys.stdout=None fait planter demucs/tqdm).
@@ -146,10 +150,24 @@ def download_audio(query: str, dest_dir: Path, on_pct=None) -> Path:
 
 
 def separate_stems(audio_path: Path, out_dir: Path, on_pct=None) -> Path:
+    # htdemucs_ft affiche 4 barres (un modele apres l'autre). On lisse la
+    # progression globale : chaque modele = 1/DEMUCS_SEGMENTS du total.
+    state = {"seg": -1, "last": 101.0}
+
+    def wrapped(p):
+        if p < state["last"] - 5:   # le % est reparti a ~0 -> nouveau modele
+            state["seg"] += 1
+        state["last"] = p
+        if on_pct:
+            seg = max(state["seg"], 0)
+            overall = (seg + p / 100.0) / DEMUCS_SEGMENTS * 100.0
+            on_pct(min(overall, 100.0))
+
     _run_stream([
         PYTHON_EXE, "-m", "demucs", "-n", DEMUCS_MODEL,
+        "--overlap", DEMUCS_OVERLAP,
         "-o", str(out_dir), str(audio_path),
-    ], "demucs", on_pct)
+    ], "demucs", wrapped)
     stem_dir = out_dir / DEMUCS_MODEL / audio_path.stem
     if not stem_dir.exists():
         raise RuntimeError("Demucs n'a pas genere les stems attendus")
@@ -162,10 +180,16 @@ app = Flask(__name__)
 CORS(app)
 
 
+import queue as _queue
 import uuid
 
-JOBS = {}
+# File d'attente : un seul stem traite a la fois (dans l'ordre d'ajout).
+JOBS = {}                       # job_id -> dict d'etat
+PENDING = []                    # job_id en attente (ordonnes)
+ACTIVE = {"id": None}           # job_id en cours
+LAST = {"id": None}             # dernier job termine (done/error)
 JOBS_LOCK = threading.Lock()
+JOB_QUEUE = _queue.Queue()
 
 
 def _set(job_id, **kw):
@@ -174,20 +198,20 @@ def _set(job_id, **kw):
             JOBS[job_id].update(kw)
 
 
-def _run_job(job_id, query, final_dir):
-    """Pipeline complet en arriere-plan, avec mise a jour de la progression.
-
-    Phases : telechargement (0-25%), separation (25-95%), copie (95-100%)."""
+def _process(job_id):
+    job = JOBS.get(job_id)
+    if not job:
+        return
+    query, final_dir = job["_query"], Path(job["_dir"])
+    _set(job_id, status="running", phase="download", percent=1)
+    log(f"Extraction : {query!r}")
     try:
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
-            _set(job_id, phase="download", percent=1)
             audio = download_audio(query, tmp, on_pct=lambda p: _set(job_id, percent=round(p * 0.25)))
             log(f"Audio telecharge : {audio.name}")
-
             _set(job_id, phase="separate", percent=25)
             stem_dir = separate_stems(audio, tmp, on_pct=lambda p: _set(job_id, percent=round(25 + p * 0.70)))
-
             _set(job_id, phase="save", percent=96)
             for f in stem_dir.glob("*.wav"):
                 (final_dir / f.name).write_bytes(f.read_bytes())
@@ -197,6 +221,26 @@ def _run_job(job_id, query, final_dir):
         return
     log(f"Termine -> {final_dir}")
     _set(job_id, status="done", percent=100, output_dir=str(final_dir))
+
+
+def _worker():
+    while True:
+        job_id = JOB_QUEUE.get()
+        with JOBS_LOCK:
+            if job_id in PENDING:
+                PENDING.remove(job_id)
+            ACTIVE["id"] = job_id
+        try:
+            _process(job_id)
+        finally:
+            with JOBS_LOCK:
+                ACTIVE["id"] = None
+                LAST["id"] = job_id
+            JOB_QUEUE.task_done()
+
+
+# Worker independant du cycle Flask (vit toute la duree du process).
+threading.Thread(target=_worker, daemon=True).start()
 
 
 @app.route("/extract", methods=["POST"])
@@ -211,14 +255,25 @@ def extract():
     folder = safe_name(f"{artist} - {title}" if artist else title)
     final_dir = OUTPUT_ROOT / folder
     final_dir.mkdir(parents=True, exist_ok=True)
-    log(f"Extraction : {query!r}")
 
     job_id = uuid.uuid4().hex[:12]
     with JOBS_LOCK:
-        JOBS[job_id] = {"status": "running", "phase": "init", "percent": 0,
-                        "title": title, "output_dir": None, "error": None}
-    threading.Thread(target=_run_job, args=(job_id, query, final_dir), daemon=True).start()
-    return jsonify(job_id=job_id), 202
+        JOBS[job_id] = {"status": "queued", "phase": "queued", "percent": 0,
+                        "title": title, "output_dir": None, "error": None,
+                        "_query": query, "_dir": str(final_dir)}
+        PENDING.append(job_id)
+        position = len(PENDING)
+    JOB_QUEUE.put(job_id)
+    log(f"En file ({position}) : {title}")
+    return jsonify(job_id=job_id, position=position), 202
+
+
+def _job_view(job_id, job):
+    out = {k: v for k, v in job.items() if not k.startswith("_")}
+    out["job_id"] = job_id
+    if job["status"] == "queued":
+        out["position"] = (PENDING.index(job_id) + 1) if job_id in PENDING else 0
+    return out
 
 
 @app.route("/progress/<job_id>", methods=["GET"])
@@ -227,7 +282,21 @@ def progress(job_id):
         job = JOBS.get(job_id)
         if not job:
             return jsonify(error="job inconnu"), 404
-        return jsonify(dict(job, job_id=job_id))
+        return jsonify(_job_view(job_id, job))
+
+
+@app.route("/queue", methods=["GET"])
+def queue_state():
+    """Etat global de la file (pour l'affichage de l'extension)."""
+    with JOBS_LOCK:
+        active = JOBS.get(ACTIVE["id"]) if ACTIVE["id"] else None
+        last = JOBS.get(LAST["id"]) if LAST["id"] else None
+        return jsonify(
+            active=_job_view(ACTIVE["id"], active) if active else None,
+            pending=[JOBS[i]["title"] for i in PENDING if i in JOBS],
+            pending_count=len(PENDING),
+            last=_job_view(LAST["id"], last) if last else None,
+        )
 
 
 @app.route("/health", methods=["GET"])

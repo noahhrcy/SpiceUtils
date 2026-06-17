@@ -26,7 +26,8 @@ DEFAULTS = {
 def load() -> dict:
     data = dict(DEFAULTS)
     try:
-        data.update(json.loads(SETTINGS_FILE.read_text(encoding="utf-8")))
+        # utf-8-sig : tolere un eventuel BOM (sinon json.loads echoue).
+        data.update(json.loads(SETTINGS_FILE.read_text(encoding="utf-8-sig")))
     except (OSError, ValueError):
         pass
     # L'etat reel de l'autostart est la verite du registre.
