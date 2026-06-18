@@ -14,7 +14,7 @@
 ; ============================================================================
 
 #define MyAppName    "SpiceUtils"
-#define MyAppVersion "1.1.1"
+#define MyAppVersion "1.1.3"
 #define MyAppPublisher "SpiceUtils"
 #define MyAppId "{A7C4E91F-2D6B-4A83-9F1C-SPICEUTILS001}"
 #define PyW "{app}\app\.venv\Scripts\pythonw.exe"

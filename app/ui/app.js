@@ -148,6 +148,23 @@ async function loadExtensions() {
     btn.disabled = !avail || !e.available;
     btn.addEventListener("click", () => toggleExtension(e, btn));
     cta.appendChild(btn);
+    // Bouton "Mettre a jour" si une version plus recente est dispo sur le repo.
+    if (e.installed && e.update_url) {
+      api.check_extension_update(e.id).then((u) => {
+        if (!u || !u.update) return;
+        const ub = document.createElement("button");
+        ub.className = "btn primary";
+        ub.style.marginTop = "0"; ub.style.marginRight = "8px";
+        ub.textContent = `Mettre à jour → ${u.remote}`;
+        ub.addEventListener("click", async () => {
+          ub.disabled = true; ub.textContent = "Mise à jour…";
+          const r = await api.update_extension(e.id);
+          toast(r.ok ? `Extension mise à jour (${r.version})` : "Échec de la mise à jour");
+          loadExtensions();
+        });
+        cta.insertBefore(ub, cta.firstChild);
+      });
+    }
     const srvBtn = card.querySelector(".ext-server-btn");
     if (srvBtn) {
       srvBtn.addEventListener("click", () => showTab("server"));

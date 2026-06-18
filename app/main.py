@@ -110,6 +110,18 @@ class Api:
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "log": str(e)}
 
+    def check_extension_update(self, ext_id):
+        try:
+            return ext_mod.check_update(ext_id)
+        except Exception as e:  # noqa: BLE001
+            return {"update": False, "error": str(e)}
+
+    def update_extension(self, ext_id):
+        try:
+            return ext_mod.update_extension(ext_id)
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "log": str(e)}
+
     # Reglages
     def get_settings(self):
         return settings_mod.load()
