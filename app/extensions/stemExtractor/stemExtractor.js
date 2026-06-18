@@ -4,10 +4,15 @@
 // stems (Demucs) et les ecrit dans le dossier Download de l'utilisateur.
 
 (function stemExtractor() {
+  // Anti-doublon : si l'extension est chargee deux fois (ex. installee a la fois
+  // via SpiceUtils et via le Marketplace), on n'initialise qu'une seule fois
+  // (sinon bouton/menu en double).
+  if (window.__stemExtractorLoaded) return;
   if (!Spicetify || !Spicetify.Platform || !Spicetify.URI || !Spicetify.showNotification) {
     setTimeout(stemExtractor, 300);
     return;
   }
+  window.__stemExtractorLoaded = true;
 
   const SERVER_URL = "http://127.0.0.1:8765";
   const SPICEUTILS_RELEASES = "https://github.com/noahhrcy/SpiceUtils/releases";
