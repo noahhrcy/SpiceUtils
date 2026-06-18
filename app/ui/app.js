@@ -42,8 +42,14 @@ const EXTRACT_SVG =
   '<path d="M4 11.5 12 15l8-3.5"/>' +
   '<path d="M12 14v7"/><path d="m8.5 17.5 3.5 3.5 3.5-3.5"/></svg>';
 
+// "Visualizer" icon (concentric rings), themed.
+const VIS_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="#c08bf0" stroke-width="1.7" width="26" height="26">' +
+  '<circle cx="12" cy="12" r="2.5" fill="#c08bf0" stroke="none"/>' +
+  '<circle cx="12" cy="12" r="6" opacity=".7"/><circle cx="12" cy="12" r="9.5" opacity=".4"/></svg>';
+
 // Custom icon per extension (otherwise default equalizer bars).
-const EXT_ICONS = { stemExtractor: EXTRACT_SVG };
+const EXT_ICONS = { stemExtractor: EXTRACT_SVG, visualizer: VIS_SVG };
 
 // --- Server ---
 async function refreshStatus() {

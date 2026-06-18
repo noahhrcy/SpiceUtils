@@ -84,6 +84,8 @@ html, body {
 .brand-text { font-size: 19px; font-weight: 700; letter-spacing: .3px;
   background: linear-gradient(90deg, #fff, var(--mauve));
   -webkit-background-clip: text; background-clip: text; color: transparent; }
+.brand-by { font-size: 10px; color: var(--muted); margin-top: 1px; }
+.home-by { font-size: 13px; color: var(--mauve); margin-bottom: 6px; opacity: .85; }
 
 .nav-item {
   text-align: left; background: transparent; border: none; color: var(--muted);

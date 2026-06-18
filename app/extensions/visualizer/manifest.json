@@ -1,0 +1,8 @@
+{
+  "id": "visualizer",
+  "name": "Visualizer",
+  "description": "Fullscreen music visualizer: beautiful flowing forms that react to the track (beats and loudness), synced to playback. Toggle it from the playbar button.",
+  "version": "1.0.0",
+  "author": "SpiceUtils",
+  "file": "visualizer.js"
+}

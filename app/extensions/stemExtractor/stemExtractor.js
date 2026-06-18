@@ -25,7 +25,9 @@
       "<p>The <b>Stem Extractor</b> extension needs the <b>SpiceUtils</b> " +
       "application (with its server running) to extract stems.</p>" +
       "<p style='color:#9a86b5;font-size:13px'>Install SpiceUtils, open it, " +
-      "then start the server (Server tab).</p>";
+      "then start the server (Server tab).</p>" +
+      "<p style='color:#c08bf0;font-size:13px'>If you already installed SpiceUtils, " +
+      "launch it before using Extract.</p>";
     const btn = document.createElement("button");
     btn.textContent = "Download SpiceUtils";
     btn.style.cssText =

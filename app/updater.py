@@ -13,7 +13,7 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-APP_VERSION = "1.1.4"
+APP_VERSION = "1.1.5"
 REPO = "noahhrcy/SpiceUtils"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 
