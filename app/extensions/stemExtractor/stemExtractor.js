@@ -10,7 +10,33 @@
   }
 
   const SERVER_URL = "http://127.0.0.1:8765";
+  const SPICEUTILS_RELEASES = "https://github.com/noahhrcy/SpiceUtils/releases";
   let backendReady = false;
+
+  // Fenetre "SpiceUtils requis" avec bouton vers la page de telechargement.
+  function showNotInstalled() {
+    const box = document.createElement("div");
+    box.style.cssText = "font-family:inherit;color:var(--spice-text,#ece4f7);line-height:1.5";
+    box.innerHTML =
+      "<p>L'extension <b>Stem Extractor</b> a besoin de l'application " +
+      "<b>SpiceUtils</b> (et de son serveur demarre) pour extraire les stems.</p>" +
+      "<p style='color:#9a86b5;font-size:13px'>Installez SpiceUtils, ouvrez-le, " +
+      "puis demarrez le serveur (onglet Serveur).</p>";
+    const btn = document.createElement("button");
+    btn.textContent = "Telecharger SpiceUtils";
+    btn.style.cssText =
+      "margin-top:10px;padding:10px 18px;border:none;border-radius:20px;cursor:pointer;" +
+      "font-weight:600;color:#fff;background:linear-gradient(135deg,#7e3fe0,#9d5cff)";
+    btn.onclick = () => {
+      try { window.open(SPICEUTILS_RELEASES, "_blank"); }
+      catch (e) {
+        try { Spicetify.Platform.ClipboardAPI.copy(SPICEUTILS_RELEASES); } catch (_) {}
+        Spicetify.showNotification("Lien copie : " + SPICEUTILS_RELEASES);
+      }
+    };
+    box.appendChild(btn);
+    Spicetify.PopupModal.display({ title: "SpiceUtils requis", content: box });
+  }
 
   async function getTrackMeta(uris) {
     const uri = Array.isArray(uris) ? uris[0] : uris;
@@ -160,12 +186,8 @@
 
   async function extractStems(uris, mode) {
     if (!backendReady) {
-      Spicetify.showNotification(
-        "Serveur SpiceUtils non detecte. Ouvrez SpiceUtils et demarrez le serveur.",
-        true, 6000
-      );
-      checkServer(true);
-      return;
+      await checkServer(true);
+      if (!backendReady) { showNotInstalled(); return; }
     }
 
     let meta;
@@ -267,18 +289,21 @@
   // Petit menu de choix du mode (Rapide / Qualite) au clic sur le bouton.
   const menuStyle = document.createElement("style");
   menuStyle.textContent = `
-    #stemx-menu{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:10000;
+    #stemx-menu{position:fixed;z-index:10000;
       background:linear-gradient(160deg,rgba(46,28,68,.98),rgba(26,16,40,.98));
       border:1px solid rgba(157,92,255,.5);border-radius:14px;padding:8px;
-      box-shadow:0 16px 40px rgba(0,0,0,.55),0 0 24px rgba(126,63,224,.3);display:flex;gap:8px}
+      box-shadow:0 16px 40px rgba(0,0,0,.55),0 0 24px rgba(126,63,224,.3);
+      display:flex;flex-direction:column;gap:8px;animation:stemxin .15s ease}
+    @keyframes stemxin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
     #stemx-menu button{background:var(--spice-card,#241439);color:#ece4f7;border:1px solid rgba(157,92,255,.3);
-      border-radius:10px;padding:10px 16px;font-size:13px;cursor:pointer;font-family:inherit}
-    #stemx-menu button:hover{background:#3a2160}
+      border-radius:10px;padding:10px 16px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
+    #stemx-menu button:hover{filter:brightness(1.12)}
     #stemx-menu .fast{background:linear-gradient(135deg,#c0445c,#8a2f44);border:none}
     #stemx-menu .qual{background:linear-gradient(135deg,#7e3fe0,#9d5cff);border:none}`;
   document.head.appendChild(menuStyle);
 
-  function showModeMenu(uris) {
+  // Affiche le menu juste AU-DESSUS du bouton (anchor).
+  function showModeMenu(uris, anchor) {
     const old = document.getElementById("stemx-menu");
     if (old) { old.remove(); return; }
     const m = document.createElement("div");
@@ -290,23 +315,41 @@
     fast.onclick = () => { m.remove(); extractStems(uris, "fast"); };
     qual.onclick = () => { m.remove(); extractStems(uris, "quality"); };
     m.appendChild(fast); m.appendChild(qual);
+    m.style.visibility = "hidden";
     document.body.appendChild(m);
+    // Positionne au-dessus et centre sur le bouton.
+    const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null;
+    if (r) {
+      const mw = m.offsetWidth;
+      let left = r.left + r.width / 2 - mw / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - mw - 8));
+      m.style.left = left + "px";
+      m.style.bottom = (window.innerHeight - r.top + 8) + "px";
+    } else {
+      m.style.left = "50%"; m.style.transform = "translateX(-50%)"; m.style.bottom = "90px";
+    }
+    m.style.visibility = "visible";
     setTimeout(() => {
       const close = (e) => { if (!m.contains(e.target)) { m.remove(); document.removeEventListener("click", close); } };
       document.addEventListener("click", close);
     }, 50);
   }
 
-  new Spicetify.Playbar.Button(
+  const pbButton = new Spicetify.Playbar.Button(
     "Extraire les stems",
     STEM_ICON,
-    () => {
+    async (self) => {
       const cur = Spicetify.Player.data?.item;
       if (!cur) {
         Spicetify.showNotification("Aucun morceau en lecture", true);
         return;
       }
-      showModeMenu(cur.uri);
+      if (!backendReady) {
+        await checkServer(true);
+        if (!backendReady) { showNotInstalled(); return; }
+      }
+      const anchor = (self && self.element) || pbButton.element;
+      showModeMenu(cur.uri, anchor);
     },
     false,
     false
