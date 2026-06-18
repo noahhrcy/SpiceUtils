@@ -14,7 +14,7 @@
 ; ============================================================================
 
 #define MyAppName    "SpiceUtils"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.1"
 #define MyAppPublisher "SpiceUtils"
 #define MyAppId "{A7C4E91F-2D6B-4A83-9F1C-SPICEUTILS001}"
 #define PyW "{app}\app\.venv\Scripts\pythonw.exe"
@@ -33,9 +33,13 @@ OutputBaseFilename=SpiceUtils-Setup
 OutputDir=Output
 SetupIconFile=..\app\icon.ico
 UninstallDisplayIcon={app}\app\icon.ico
+WizardImageFile=wizard_large.bmp
+WizardSmallImageFile=wizard_small.bmp
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+; Windows 10 (1809) ou plus recent.
+MinVersion=10.0.17763
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
@@ -59,18 +63,17 @@ Name: "{group}\Desinstaller SpiceUtils"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\SpiceUtils";  Filename: "{#PyW}"; Parameters: """{#MainPy}"""; WorkingDir: "{app}\app"; IconFilename: "{app}\app\icon.ico"; Tasks: desktopicon
 
 [Run]
-; 1) Post-install (admin) : winget + venv + dependances.
-;    Console VISIBLE volontairement : l'install des dependances (torch/demucs)
-;    dure plusieurs minutes ; sans retour visuel l'assistant semble "fige".
+; 1) Post-install (admin) : Python autonome + FFmpeg + WebView2 + venv + deps.
+;    Fenetre cachee (runhidden) ; la progression s'affiche dans l'assistant.
 Filename: "powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\postinstall.ps1"" -AppDir ""{app}"""; \
-  StatusMsg: "Installation des dependances (suivez la progression dans la fenetre ouverte, plusieurs minutes)..."; \
-  Flags: waituntilterminated
+  Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\installer\postinstall.ps1"" -AppDir ""{app}"""; \
+  StatusMsg: "Installation des composants et dependances (plusieurs minutes, merci de patienter)..."; \
+  Flags: runhidden waituntilterminated
 
-; 2) Lancer SpiceUtils dans la session utilisateur (case a cocher finale).
+; 2) Lancer SpiceUtils (aussi apres une mise a jour silencieuse).
 Filename: "{#PyW}"; Parameters: """{#MainPy}"""; WorkingDir: "{app}\app"; \
   Description: "Lancer SpiceUtils maintenant"; \
-  Flags: runasoriginaluser nowait postinstall skipifsilent; \
+  Flags: runasoriginaluser nowait postinstall; \
   Check: ServerReady
 
 [UninstallRun]

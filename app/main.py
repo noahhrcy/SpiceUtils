@@ -50,9 +50,12 @@ class Api:
             return ""
 
     def open_output(self):
-        d = server_mod.output_root()
-        d.mkdir(parents=True, exist_ok=True)
-        os.startfile(str(d))  # noqa: S606 (Windows)
+        try:
+            d = server_mod.output_root()
+            d.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(d))  # noqa: S606 (Windows)
+        except Exception:
+            return {"ok": False}
         return {"ok": True}
 
     def get_queue(self):
@@ -80,9 +83,12 @@ class Api:
         return server_mod.get_config()
 
     def open_output_dir(self):
-        d = server_mod.output_root()
-        d.mkdir(parents=True, exist_ok=True)
-        os.startfile(str(d))
+        try:
+            d = server_mod.output_root()
+            d.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(d))
+        except Exception:
+            return {"ok": False}
         return {"ok": True}
 
     # Extensions

@@ -90,6 +90,34 @@ if (-not (Test-Path $FfExe)) {
 }
 Ok "FFmpeg : $FfExe"
 
+# --- 2b) Runtime WebView2 (necessaire pour l'UI ; absent sur certains Win10) --
+Step "Runtime WebView2"
+function WebView2-Installed {
+    $keys = @(
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+        "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+        "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    )
+    foreach ($k in $keys) {
+        $v = (Get-ItemProperty $k -ErrorAction SilentlyContinue).pv
+        if ($v -and $v -ne "0.0.0.0") { return $true }
+    }
+    return $false
+}
+if (WebView2-Installed) {
+    Ok "WebView2 deja present"
+} else {
+    try {
+        $bs = Join-Path $Tmp "MicrosoftEdgeWebview2Setup.exe"
+        Download "https://go.microsoft.com/fwlink/p/?LinkId=2124703" $bs
+        & $bs /silent /install
+        Start-Sleep -Seconds 5
+        if (WebView2-Installed) { Ok "WebView2 installe" } else { Warn "WebView2 : etat incertain (l'UI peut necessiter une reconnexion)" }
+    } catch {
+        Warn "WebView2 non installe automatiquement : $_"
+    }
+}
+
 # --- 3) venv + dependances ---------------------------------------------------
 Step "Environnement Python + dependances (plusieurs minutes)"
 $Venv       = Join-Path $Src ".venv"
