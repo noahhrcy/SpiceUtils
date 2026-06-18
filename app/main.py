@@ -159,7 +159,7 @@ class Api:
             import webbrowser
             webbrowser.open(GITHUB_URL)
             return {"ok": True}
-        return {"ok": False, "message": "Lien GitHub bientot disponible."}
+        return {"ok": False, "message": "GitHub link coming soon."}
 
     # Fenetre / app
     def hide_window(self):
@@ -265,7 +265,7 @@ def _auto_update_check():
         if avail:
             if window:
                 window.evaluate_js(
-                    "window.spiceToast && window.spiceToast('Mise a jour " + str(tag) + " en cours...')")
+                    "window.spiceToast && window.spiceToast('Updating to " + str(tag) + "...')")
             if updater_mod.download_and_run():
                 _quit()
     except Exception:

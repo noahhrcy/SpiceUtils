@@ -1,12 +1,11 @@
-// stemExtractor.js — Extension Spicetify (livree par SpiceUtils)
-// Ajoute un bouton "Extraire les stems" (barre de lecture + menu contextuel).
-// Au clic : envoie le morceau au serveur local de SpiceUtils qui separe les
-// stems (Demucs) et les ecrit dans le dossier Download de l'utilisateur.
+// stemExtractor.js — Spicetify extension (shipped by SpiceUtils)
+// Adds an "Extract stems" button (playbar + context menu).
+// On click: sends the track to the local SpiceUtils server which separates the
+// stems (Demucs) and saves them to the user's chosen output folder.
 
 (function stemExtractor() {
-  // Anti-doublon : si l'extension est chargee deux fois (ex. installee a la fois
-  // via SpiceUtils et via le Marketplace), on n'initialise qu'une seule fois
-  // (sinon bouton/menu en double).
+  // De-dup: if the extension is loaded twice (e.g. installed via both SpiceUtils
+  // and the Marketplace), only initialize once (otherwise duplicate button/menu).
   if (window.__stemExtractorLoaded) return;
   if (!Spicetify || !Spicetify.Platform || !Spicetify.URI || !Spicetify.showNotification) {
     setTimeout(stemExtractor, 300);
@@ -18,17 +17,17 @@
   const SPICEUTILS_RELEASES = "https://github.com/noahhrcy/SpiceUtils/releases";
   let backendReady = false;
 
-  // Fenetre "SpiceUtils requis" avec bouton vers la page de telechargement.
+  // "SpiceUtils required" dialog with a button to the download page.
   function showNotInstalled() {
     const box = document.createElement("div");
     box.style.cssText = "font-family:inherit;color:var(--spice-text,#ece4f7);line-height:1.5";
     box.innerHTML =
-      "<p>L'extension <b>Stem Extractor</b> a besoin de l'application " +
-      "<b>SpiceUtils</b> (et de son serveur demarre) pour extraire les stems.</p>" +
-      "<p style='color:#9a86b5;font-size:13px'>Installez SpiceUtils, ouvrez-le, " +
-      "puis demarrez le serveur (onglet Serveur).</p>";
+      "<p>The <b>Stem Extractor</b> extension needs the <b>SpiceUtils</b> " +
+      "application (with its server running) to extract stems.</p>" +
+      "<p style='color:#9a86b5;font-size:13px'>Install SpiceUtils, open it, " +
+      "then start the server (Server tab).</p>";
     const btn = document.createElement("button");
-    btn.textContent = "Telecharger SpiceUtils";
+    btn.textContent = "Download SpiceUtils";
     btn.style.cssText =
       "margin-top:10px;padding:10px 18px;border:none;border-radius:20px;cursor:pointer;" +
       "font-weight:600;color:#fff;background:linear-gradient(135deg,#7e3fe0,#9d5cff)";
@@ -36,11 +35,11 @@
       try { window.open(SPICEUTILS_RELEASES, "_blank"); }
       catch (e) {
         try { Spicetify.Platform.ClipboardAPI.copy(SPICEUTILS_RELEASES); } catch (_) {}
-        Spicetify.showNotification("Lien copie : " + SPICEUTILS_RELEASES);
+        Spicetify.showNotification("Link copied: " + SPICEUTILS_RELEASES);
       }
     };
     box.appendChild(btn);
-    Spicetify.PopupModal.display({ title: "SpiceUtils requis", content: box });
+    Spicetify.PopupModal.display({ title: "SpiceUtils required", content: box });
   }
 
   async function getTrackMeta(uris) {
@@ -115,7 +114,7 @@
     el.innerHTML =
       '<div class="sx-row"><div class="sx-ic"><i></i><i></i><i></i></div>' +
       '<span class="sx-title"></span><span class="sx-pct">0%</span>' +
-      '<button class="sx-cancel" title="Annuler l\'extraction en cours">✕</button></div>' +
+      '<button class="sx-cancel" title="Cancel the running extraction">✕</button></div>' +
       '<div class="sx-bar"><div class="sx-fill"></div></div>' +
       '<div class="sx-phase"></div>' +
       '<div class="sx-list"><div class="sx-list-h"></div></div>';
@@ -124,8 +123,8 @@
     return el;
   }
 
-  const PHASES = { init: "Preparation…", download: "Telechargement de l'audio…",
-    separate: "Separation des stems (Demucs)…", save: "Enregistrement…" };
+  const PHASES = { init: "Preparing…", download: "Downloading audio…",
+    separate: "Separating stems (Demucs)…", save: "Saving…" };
 
   function showProgress(title) {
     const el = ensureProgressUI();
@@ -146,7 +145,7 @@
     if (!progressEl) return;
     if (isError) {
       progressEl.classList.add("err");
-      progressEl.querySelector(".sx-phase").textContent = msg || "Echec";
+      progressEl.querySelector(".sx-phase").textContent = msg || "Failed";
     }
     const list = progressEl.querySelector(".sx-list");
     if (list) list.classList.remove("show");
@@ -159,23 +158,23 @@
   function fmtEta(sec) {
     if (sec == null || sec < 0) return "";
     sec = Math.round(sec);
-    if (sec >= 60) return `~${Math.floor(sec / 60)}m${String(sec % 60).padStart(2, "0")}s restantes`;
-    return `~${sec}s restantes`;
+    if (sec >= 60) return `~${Math.floor(sec / 60)}m${String(sec % 60).padStart(2, "0")}s left`;
+    return `~${sec}s left`;
   }
 
-  // Affiche la liste des morceaux en attente sous la barre.
+  // Show the list of queued tracks below the bar.
   function renderQueueList(pending) {
     if (!progressEl) return;
     const list = progressEl.querySelector(".sx-list");
     if (!pending || pending.length === 0) { list.innerHTML = ""; list.classList.remove("show"); return; }
-    list.innerHTML = `<div class="sx-list-h">En attente (${pending.length})</div>`;
+    list.innerHTML = `<div class="sx-list-h">Queued (${pending.length})</div>`;
     pending.forEach((p) => {
       const row = document.createElement("div");
       row.className = "sx-list-i";
       const s = document.createElement("span");
       s.textContent = p.title;
       const x = document.createElement("button");
-      x.className = "sx-x"; x.textContent = "✕"; x.title = "Retirer de la file";
+      x.className = "sx-x"; x.textContent = "✕"; x.title = "Remove from queue";
       x.onclick = () => { cancelJob(p.job_id); x.disabled = true; };
       row.appendChild(s); row.appendChild(x);
       list.appendChild(row);
@@ -199,7 +198,7 @@
     try {
       meta = await getTrackMeta(uris);
     } catch (e) {
-      Spicetify.showNotification("Impossible de lire les infos du morceau", true);
+      Spicetify.showNotification("Could not read track info", true);
       console.error("[StemExtractor]", e);
       return;
     }
@@ -217,19 +216,19 @@
       showProgress(meta.title);
       Spicetify.showNotification(
         data.position > 1
-          ? `Ajoute a la file (#${data.position}) : ${meta.title}`
-          : `Extraction : ${meta.title}`
+          ? `Queued (#${data.position}): ${meta.title}`
+          : `Extracting: ${meta.title}`
       );
       startQueuePoller();
     } catch (e) {
       console.error("[StemExtractor]", e);
       ensureProgressUI();
       showProgress(meta.title);
-      finishProgress(true, "Le serveur repond-il ?");
+      finishProgress(true, "Is the server running?");
     }
   }
 
-  // Poll global de la file : affiche le morceau en cours + le nombre en attente.
+  // Global queue poll: shows the current track + the number queued.
   function startQueuePoller() {
     if (queuePoller) return;
     queuePoller = setInterval(async () => {
@@ -240,7 +239,7 @@
         q = await r.json();
       } catch (e) {
         clearInterval(queuePoller); queuePoller = null;
-        finishProgress(true, "Connexion perdue");
+        finishProgress(true, "Connection lost");
         return;
       }
       if (q.active) {
@@ -254,7 +253,7 @@
         let phase;
         if (q.active.status === "queued") {
           updateProgress(0);
-          phase = `En file (#${q.active.position})`;
+          phase = `Queued (#${q.active.position})`;
         } else {
           updateProgress(q.active.percent || 0);
           phase = PHASES[q.active.phase] || q.active.phase || "";
@@ -266,19 +265,19 @@
       } else if (q.pending_count > 0) {
         // transition entre deux morceaux
         if (progressEl) {
-          progressEl.querySelector(".sx-phase").textContent = "En attente…";
+          progressEl.querySelector(".sx-phase").textContent = "Waiting…";
           renderQueueList(q.pending);
         }
       } else {
         // file vide -> on a fini
         clearInterval(queuePoller); queuePoller = null;
         if (q.last && q.last.status === "error") {
-          finishProgress(true, q.last.error ? q.last.error.slice(0, 60) : "Echec");
-          Spicetify.showNotification("Echec de l'extraction des stems", true);
+          finishProgress(true, q.last.error ? q.last.error.slice(0, 60) : "Failed");
+          Spicetify.showNotification("Stem extraction failed", true);
         } else {
           updateProgress(100);
           finishProgress(false);
-          Spicetify.showNotification("Stems prets ✓");
+          Spicetify.showNotification("Stems ready ✓");
         }
       }
     }, 700);
@@ -314,9 +313,9 @@
     const m = document.createElement("div");
     m.id = "stemx-menu";
     const fast = document.createElement("button");
-    fast.className = "fast"; fast.textContent = "⚡ Extraction Rapide";
+    fast.className = "fast"; fast.textContent = "⚡ Fast extraction";
     const qual = document.createElement("button");
-    qual.className = "qual"; qual.textContent = "✨ Extraction Qualité";
+    qual.className = "qual"; qual.textContent = "✨ Quality extraction";
     fast.onclick = () => { m.remove(); extractStems(uris, "fast"); };
     qual.onclick = () => { m.remove(); extractStems(uris, "quality"); };
     m.appendChild(fast); m.appendChild(qual);
@@ -341,12 +340,12 @@
   }
 
   const pbButton = new Spicetify.Playbar.Button(
-    "Extraire les stems",
+    "Extract stems",
     STEM_ICON,
     async (self) => {
       const cur = Spicetify.Player.data?.item;
       if (!cur) {
-        Spicetify.showNotification("Aucun morceau en lecture", true);
+        Spicetify.showNotification("No track playing", true);
         return;
       }
       if (!backendReady) {
@@ -361,13 +360,13 @@
   );
 
   new Spicetify.ContextMenu.Item(
-    "Extraire les stems (Rapide)",
+    "Extract stems (Fast)",
     (uris) => extractStems(uris, "fast"),
     (uris) => uris.length === 1 && Spicetify.URI.isTrack(uris[0]),
     STEM_ICON
   ).register();
   new Spicetify.ContextMenu.Item(
-    "Extraire les stems (Qualité)",
+    "Extract stems (Quality)",
     (uris) => extractStems(uris, "quality"),
     (uris) => uris.length === 1 && Spicetify.URI.isTrack(uris[0]),
     STEM_ICON
@@ -380,15 +379,15 @@
       const data = await r.json();
       if (String(data.app || "").includes("stem-extractor")) {
         backendReady = true;
-        console.log(`[StemExtractor] serveur SpiceUtils v${data.version} detecte`);
+        console.log(`[StemExtractor] SpiceUtils server v${data.version} detected`);
         return true;
       }
-      throw new Error("reponse inattendue");
+      throw new Error("unexpected response");
     } catch (e) {
       backendReady = false;
       if (!silent) {
         Spicetify.showNotification(
-          "Stem Extractor : serveur SpiceUtils non demarre.",
+          "Stem Extractor: SpiceUtils server not running.",
           true,
           6000
         );
@@ -405,5 +404,5 @@
     }
   });
 
-  console.log("[StemExtractor] extension chargee (SpiceUtils)");
+  console.log("[StemExtractor] extension loaded (SpiceUtils)");
 })();

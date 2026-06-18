@@ -36,20 +36,20 @@ function Warn($m) { Write-Host "    [!] $m"  -ForegroundColor Yellow }
 
 # Telechargement robuste via curl (suit les redirections, retries reseau).
 function Download($url, $out) {
-    Write-Host "    telechargement: $url"
+    Write-Host "    downloading: $url"
     curl.exe -L --retry 5 --retry-delay 3 --connect-timeout 30 --fail -o $out $url
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $out)) {
-        throw "Echec du telechargement (reseau ?) : $url"
+        throw "Download failed (network?): $url"
     }
 }
 
 Write-Host "==================================================" -ForegroundColor Magenta
-Write-Host "  SpiceUtils - installation (autonome, sans winget)" -ForegroundColor Magenta
-Write-Host "  Cette fenetre se fermera automatiquement a la fin." -ForegroundColor Magenta
+Write-Host "  SpiceUtils - installation (standalone, no winget)" -ForegroundColor Magenta
+Write-Host "  This window will close automatically when done." -ForegroundColor Magenta
 Write-Host "==================================================" -ForegroundColor Magenta
 
-# --- 1) Python autonome ------------------------------------------------------
-Step "Python autonome"
+# --- 1) Standalone Python ----------------------------------------------------
+Step "Standalone Python"
 $PyExe = Join-Path $PyDir "python.exe"
 if (-not (Test-Path $PyExe)) {
     # URL via l'API GitHub (derniere 3.12 install_only), repli sur une URL fixe.
@@ -69,7 +69,7 @@ if (-not (Test-Path $PyExe)) {
     Download $url $arc
     # L'archive "install_only" se decompresse en un dossier "python/".
     tar.exe -xf $arc -C $AppDir
-    if (-not (Test-Path $PyExe)) { throw "Python autonome introuvable apres extraction." }
+    if (-not (Test-Path $PyExe)) { throw "Standalone Python not found after extraction." }
 }
 & $PyExe --version
 Ok "Python : $PyExe"
@@ -82,11 +82,11 @@ if (-not (Test-Path $FfExe)) {
     Download "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" $zip
     Expand-Archive -Path $zip -DestinationPath $Tmp -Force
     $inner = Get-ChildItem $Tmp -Directory | Where-Object { $_.Name -like "ffmpeg-*win64*" } | Select-Object -First 1
-    if (-not $inner) { throw "Dossier FFmpeg introuvable apres extraction." }
+    if (-not $inner) { throw "FFmpeg folder not found after extraction." }
     $dstBin = Join-Path $FfDir "bin"
     New-Item -ItemType Directory -Force -Path $dstBin | Out-Null
     Copy-Item (Join-Path $inner.FullName "bin\*") -Destination $dstBin -Recurse -Force
-    if (-not (Test-Path $FfExe)) { throw "ffmpeg.exe introuvable apres extraction." }
+    if (-not (Test-Path $FfExe)) { throw "ffmpeg.exe not found after extraction." }
 }
 Ok "FFmpeg : $FfExe"
 
@@ -105,21 +105,21 @@ function WebView2-Installed {
     return $false
 }
 if (WebView2-Installed) {
-    Ok "WebView2 deja present"
+    Ok "WebView2 already present"
 } else {
     try {
         $bs = Join-Path $Tmp "MicrosoftEdgeWebview2Setup.exe"
         Download "https://go.microsoft.com/fwlink/p/?LinkId=2124703" $bs
         & $bs /silent /install
         Start-Sleep -Seconds 5
-        if (WebView2-Installed) { Ok "WebView2 installe" } else { Warn "WebView2 : etat incertain (l'UI peut necessiter une reconnexion)" }
+        if (WebView2-Installed) { Ok "WebView2 installed" } else { Warn "WebView2: uncertain state (the UI may need a re-login)" }
     } catch {
-        Warn "WebView2 non installe automatiquement : $_"
+        Warn "WebView2 not installed automatically: $_"
     }
 }
 
 # --- 3) venv + dependances ---------------------------------------------------
-Step "Environnement Python + dependances (plusieurs minutes)"
+Step "Python environment + dependencies (several minutes)"
 $Venv       = Join-Path $Src ".venv"
 $VenvPython = Join-Path $Venv "Scripts\python.exe"
 $Req        = Join-Path $Src "requirements.txt"
@@ -129,17 +129,17 @@ if (-not (Test-Path $VenvPython)) { & $PyExe -m venv $Venv }
 # Telechargements volumineux (torch ~200 Mo) : on tolere les coupures reseau.
 $ok = $false
 for ($try = 1; $try -le 3; $try++) {
-    Write-Host "    Installation des paquets (tentative $try/3)..." -ForegroundColor Cyan
+    Write-Host "    Installing packages (attempt $try/3)..." -ForegroundColor Cyan
     & $VenvPython -m pip install -r $Req --retries 5 --timeout 120
     if ($LASTEXITCODE -eq 0) { $ok = $true; break }
-    Warn "Echec (reseau ?). Nouvelle tentative dans 8 s..."
+    Warn "Failed (network?). Retrying in 8 s..."
     Start-Sleep -Seconds 8
 }
 if (-not $ok) {
-    throw "Echec du telechargement des dependances apres 3 tentatives. Verifiez la connexion (acces a pypi.org / files.pythonhosted.org) puis relancez l'installateur."
+    throw "Dependency download failed after 3 attempts. Check your connection (access to pypi.org / files.pythonhosted.org) then re-run the installer."
 }
-Ok "Dependances installees"
+Ok "Dependencies installed"
 
 Remove-Item $Tmp -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "`n=== SpiceUtils pret. ===" -ForegroundColor Green
+Write-Host "`n=== SpiceUtils ready. ===" -ForegroundColor Green
 try { Stop-Transcript | Out-Null } catch {}

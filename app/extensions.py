@@ -94,7 +94,7 @@ def ensure_spicetify() -> str:
     )
     exe = _spicetify_exe()
     if not exe:
-        raise RuntimeError("Echec de l'installation automatique de Spicetify.")
+        raise RuntimeError("Automatic Spicetify installation failed.")
     # Initialise Spicetify (patch Spotify) sur une install neuve.
     subprocess.run(
         [exe, "backup", "apply"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -106,7 +106,7 @@ def ensure_spicetify() -> str:
 def _run(*args) -> subprocess.CompletedProcess:
     exe = _spicetify_exe()
     if not exe:
-        raise RuntimeError("Spicetify introuvable. Installe-le depuis spicetify.app.")
+        raise RuntimeError("Spicetify not found. Install it from spicetify.app.")
     return subprocess.run(
         [exe, *args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace", creationflags=NO_WINDOW,
@@ -120,7 +120,7 @@ def _extensions_dir() -> Path:
     # On garde la ligne qui ressemble a un chemin Windows (ignore avertissements).
     paths = [ln.strip() for ln in out.splitlines() if re.match(r"^[A-Za-z]:\\", ln.strip())]
     if not paths:
-        raise RuntimeError("Chemin Spicetify introuvable : " + out.strip()[:200])
+        raise RuntimeError("Spicetify path not found: " + out.strip()[:200])
     d = Path(paths[-1]) / "Extensions"
     d.mkdir(parents=True, exist_ok=True)
     return d
@@ -161,7 +161,7 @@ def _find(ext_id: str) -> dict:
     for e in list_extensions():
         if e["id"] == ext_id:
             return e
-    raise ValueError(f"Extension inconnue : {ext_id}")
+    raise ValueError(f"Unknown extension: {ext_id}")
 
 
 def install(ext_id: str) -> dict:
@@ -200,7 +200,7 @@ def check_update(ext_id: str) -> dict:
     try:
         meta = json.loads(_http(e["update_url"]).decode("utf-8"))
     except Exception:
-        return {"update": False, "error": "reseau"}
+        return {"update": False, "error": "network"}
     remote = meta.get("version")
     return {"update": _ver_tuple(remote) > _ver_tuple(cur), "remote": remote, "current": cur}
 
@@ -209,13 +209,13 @@ def update_extension(ext_id: str) -> dict:
     """Telecharge la derniere version depuis le repo et la reinstalle."""
     e = _find(ext_id)
     if not e.get("update_url"):
-        return {"ok": False, "log": "pas de source de mise a jour"}
+        return {"ok": False, "log": "no update source"}
     try:
         meta = json.loads(_http(e["update_url"]).decode("utf-8"))
         base = e["update_url"].rsplit("/", 1)[0]
         js = _http(base + "/" + meta["file"]).decode("utf-8")
     except Exception as ex:  # noqa: BLE001
-        return {"ok": False, "log": f"telechargement: {ex}"}
+        return {"ok": False, "log": f"download: {ex}"}
     ensure_spicetify()
     dst = _extensions_dir() / meta["file"]
     dst.write_text(js, encoding="utf-8")

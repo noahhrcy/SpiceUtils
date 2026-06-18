@@ -1,8 +1,8 @@
 {
   "id": "stemExtractor",
   "name": "Stem Extractor",
-  "description": "Ajoute un bouton pour extraire les stems d'une track (attention : le serveur doit être installé. Cliquez sur le bouton \"Serveur\" juste en dessous).",
-  "version": "2.5.1",
+  "description": "Adds a button to extract a track's stems (note: the server must be installed. Click the \"Server\" button just below).",
+  "version": "2.5.2",
   "author": "SpiceUtils",
   "file": "stemExtractor.js",
   "update_url": "https://raw.githubusercontent.com/noahhrcy/stem-extractor/main/ext.json"

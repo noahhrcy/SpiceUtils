@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,7 +9,7 @@
 </head>
 <body>
   <div class="app">
-    <!-- Barre laterale -->
+    <!-- Sidebar -->
     <nav class="sidebar">
       <div class="brand">
         <div class="brand-logo">
@@ -17,18 +17,18 @@
         </div>
         <div class="brand-text">SpiceUtils</div>
       </div>
-      <button class="nav-item active" data-tab="home">Accueil</button>
+      <button class="nav-item active" data-tab="home">Home</button>
       <button class="nav-item" data-tab="extensions">Extensions</button>
-      <button class="nav-item" data-tab="settings">Reglages</button>
+      <button class="nav-item" data-tab="settings">Settings</button>
       <div class="sidebar-footer">
         <span id="footer-status" class="dot off"></span>
-        <span id="footer-label">Serveur arrete</span>
+        <span id="footer-label">Server stopped</span>
       </div>
     </nav>
 
-    <!-- Contenu -->
+    <!-- Content -->
     <main class="content">
-      <!-- Accueil -->
+      <!-- Home -->
       <section class="tab active" id="tab-home">
         <div class="home-hero">
           <svg class="home-logo" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SpiceUtils">
@@ -49,7 +49,7 @@
             </g>
           </svg>
           <h1 class="home-title">SpiceUtils</h1>
-          <p class="muted">Votre hub d'extensions Spicetify.</p>
+          <p class="muted">Your Spicetify extensions hub.</p>
           <div class="home-actions">
             <button class="btn primary" data-goto="extensions">Extensions</button>
             <button class="btn" id="btn-github">GitHub</button>
@@ -61,66 +61,66 @@
       <section class="tab" id="tab-extensions">
         <h1>Extensions</h1>
         <div id="spicetify-warning" class="warning hidden">
-          Spicetify n'a pas ete detecte. Installez-le depuis
-          <b>spicetify.app</b> pour pouvoir installer des extensions.
+          Spicetify was not detected. Install it from
+          <b>spicetify.app</b> to be able to install extensions.
         </div>
         <div id="ext-list" class="ext-list"></div>
       </section>
 
-      <!-- Serveur -->
+      <!-- Server -->
       <section class="tab" id="tab-server">
         <button class="link back" id="btn-back-ext">← Extensions</button>
-        <h1>Serveur</h1>
+        <h1>Server</h1>
         <div class="panel server-panel">
           <div class="server-head">
             <div>
               <span id="server-dot" class="dot off"></span>
-              <span id="server-state">Arrete</span>
+              <span id="server-state">Stopped</span>
             </div>
             <div class="server-actions">
-              <button class="btn primary" id="btn-start">Demarrer</button>
-              <button class="btn" id="btn-stop">Arreter</button>
+              <button class="btn primary" id="btn-start">Start</button>
+              <button class="btn" id="btn-stop">Stop</button>
             </div>
           </div>
           <div class="server-meta">
-            <div><span class="muted">Adresse</span><br /><b id="server-addr">—</b></div>
+            <div><span class="muted">Address</span><br /><b id="server-addr">—</b></div>
             <div><span class="muted">Version</span><br /><b id="server-ver">—</b></div>
             <div class="grow">
-              <span class="muted">Dossier de sortie</span><br />
+              <span class="muted">Output folder</span><br />
               <b id="server-out">—</b>
-              <button class="link" id="btn-open-out">Ouvrir</button>
+              <button class="link" id="btn-open-out">Open</button>
             </div>
           </div>
         </div>
-        <h3 class="logs-title">File d'attente</h3>
-        <div id="queue-box" class="panel"><span class="muted">File vide.</span></div>
+        <h3 class="logs-title">Queue</h3>
+        <div id="queue-box" class="panel"><span class="muted">Queue empty.</span></div>
 
-        <h3 class="logs-title">Journal</h3>
+        <h3 class="logs-title">Log</h3>
         <pre id="logbox" class="logbox"></pre>
       </section>
 
-      <!-- Reglages -->
+      <!-- Settings -->
       <section class="tab" id="tab-settings">
-        <h1>Reglages</h1>
+        <h1>Settings</h1>
         <div class="panel">
           <label class="row-toggle">
             <span>
-              <b>Lancer SpiceUtils au demarrage du PC</b>
-              <small class="muted">Ajoute SpiceUtils au demarrage de Windows (icone barre des taches).</small>
+              <b>Launch SpiceUtils on PC startup</b>
+              <small class="muted">Adds SpiceUtils to Windows startup (system tray icon).</small>
             </span>
             <input type="checkbox" id="set-autostart-app" />
           </label>
           <label class="row-toggle">
             <span>
-              <b>Demarrer le serveur a l'ouverture de l'app</b>
-              <small class="muted">Le serveur se lance automatiquement quand SpiceUtils s'ouvre.</small>
+              <b>Start the server when the app opens</b>
+              <small class="muted">The server starts automatically when SpiceUtils opens.</small>
             </span>
             <input type="checkbox" id="set-autostart-server" />
           </label>
           <label class="row-toggle">
             <span>
-              <b>Mises a jour automatiques</b>
-              <small class="muted">Verifie et installe les mises a jour de SpiceUtils au lancement.</small>
+              <b>Automatic updates</b>
+              <small class="muted">Checks for and installs SpiceUtils updates on launch.</small>
             </span>
             <input type="checkbox" id="set-auto-update" />
           </label>
@@ -131,17 +131,17 @@
               <b>Version <span id="app-version">—</span></b>
               <small class="muted">SpiceUtils</small>
             </span>
-            <button class="btn" id="btn-check-update">Verifier les mises a jour</button>
+            <button class="btn" id="btn-check-update">Check for updates</button>
           </div>
         </div>
         <div class="panel danger-zone">
-          <button class="btn" id="btn-quit">Quitter SpiceUtils</button>
+          <button class="btn" id="btn-quit">Quit SpiceUtils</button>
         </div>
       </section>
     </main>
   </div>
 
-  <!-- Fond anime -->
+  <!-- Animated background -->
   <div class="bg-fx">
     <div class="orb orb1"></div>
     <div class="orb orb2"></div>
@@ -149,21 +149,21 @@
     <div class="grid-glow"></div>
   </div>
 
-  <!-- Modal de fermeture -->
+  <!-- Close modal -->
   <div id="close-modal" class="modal-overlay hidden">
     <div class="modal">
       <div class="modal-icon"><span></span><span></span><span></span><span></span></div>
-      <h2>Quitter SpiceUtils ?</h2>
-      <p class="muted">Le serveur de stems tourne actuellement.<br />Que voulez-vous faire ?</p>
+      <h2>Quit SpiceUtils?</h2>
+      <p class="muted">The stems server is currently running.<br />What would you like to do?</p>
       <div class="modal-actions">
         <button class="btn modal-keep" id="modal-keep">
-          <b>Laisser tourner</b><small>en arriere-plan (barre des taches)</small>
+          <b>Keep running</b><small>in the background (system tray)</small>
         </button>
         <button class="btn modal-off" id="modal-off">
-          <b>Eteindre</b><small>arreter le serveur et quitter</small>
+          <b>Shut down</b><small>stop the server and quit</small>
         </button>
       </div>
-      <button class="modal-cancel" id="modal-cancel">Annuler</button>
+      <button class="modal-cancel" id="modal-cancel">Cancel</button>
     </div>
   </div>
 

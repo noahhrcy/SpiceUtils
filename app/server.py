@@ -120,7 +120,7 @@ def ensure_ffmpeg_on_path():
     app_ffmpeg = Path(__file__).resolve().parent.parent / "ffmpeg" / "bin"
     if (app_ffmpeg / "ffmpeg.exe").exists():
         os.environ["PATH"] = str(app_ffmpeg) + os.pathsep + os.environ.get("PATH", "")
-        log(f"FFmpeg (local app) ajoute au PATH : {app_ffmpeg}")
+        log(f"FFmpeg (app-local) added to PATH: {app_ffmpeg}")
         return
 
     if which("ffmpeg") and which("ffprobe"):
@@ -137,9 +137,9 @@ def ensure_ffmpeg_on_path():
     for d in candidates:
         if (d / "ffmpeg.exe").exists():
             os.environ["PATH"] = str(d) + os.pathsep + os.environ.get("PATH", "")
-            log(f"FFmpeg ajoute au PATH : {d}")
+            log(f"FFmpeg added to PATH: {d}")
             return
-    log("AVERTISSEMENT : FFmpeg introuvable")
+    log("WARNING: FFmpeg not found")
 
 
 # --- Pipeline d'extraction ---------------------------------------------------
@@ -184,7 +184,7 @@ def _run_stream(cmd, label, on_pct=None):
             buf += ch
     proc.wait()
     if proc.returncode != 0:
-        raise RuntimeError(f"{label} a echoue (code {proc.returncode}) :\n" + "\n".join(tail[-15:]))
+        raise RuntimeError(f"{label} failed (code {proc.returncode}):\n" + "\n".join(tail[-15:]))
 
 
 def safe_name(name: str) -> str:
@@ -201,7 +201,7 @@ def download_audio(query: str, dest_dir: Path, on_pct=None) -> Path:
     ], "yt-dlp", on_pct)
     wavs = list(dest_dir.glob("source.wav")) or list(dest_dir.glob("source.*"))
     if not wavs:
-        raise RuntimeError("yt-dlp n'a produit aucun fichier audio")
+        raise RuntimeError("yt-dlp produced no audio file")
     return wavs[0]
 
 
@@ -228,7 +228,7 @@ def separate_stems(audio_path: Path, out_dir: Path, prof=None, on_pct=None) -> P
     ], "demucs", wrapped)
     stem_dir = out_dir / model / audio_path.stem
     if not stem_dir.exists():
-        raise RuntimeError("Demucs n'a pas genere les stems attendus")
+        raise RuntimeError("Demucs did not generate the expected stems")
     return stem_dir
 
 
@@ -272,17 +272,17 @@ def _process(job_id):
     sep = {"start": None}
     _CUR["cancel"] = False
     _set(job_id, status="running", phase="download", percent=1, eta=None)
-    log(f"▶ Demarrage : '{title}'  (qualite={prof['label']}, modele={prof['model']})")
+    log(f"▶ Starting: '{title}'  (quality={prof['label']}, model={prof['model']})")
     try:
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
 
             t_dl = time.time()
             audio = download_audio(query, tmp, on_pct=lambda p: _set(job_id, percent=round(p * 0.25)))
-            log(f"  ↓ Audio recupere en {_fmt_dur(time.time() - t_dl)} ({audio.name})")
+            log(f"  ↓ Audio fetched in {_fmt_dur(time.time() - t_dl)} ({audio.name})")
 
             _set(job_id, phase="separate", percent=25)
-            log(f"  ♫ Separation des stems ({prof['model']}, overlap {prof['overlap']})...")
+            log(f"  ♫ Separating stems ({prof['model']}, overlap {prof['overlap']})...")
             sep["start"] = time.time()
 
             def on_sep(p):
@@ -304,26 +304,26 @@ def _process(job_id):
                 n += 1
     except Exception as e:  # noqa: BLE001
         if _CUR.get("cancel"):
-            log(f"⊘ Annule : '{title}'")
+            log(f"⊘ Cancelled: '{title}'")
             _set(job_id, status="cancelled", percent=0, eta=None)
         else:
-            log(f"✗ ECHEC '{title}' : {e}")
+            log(f"✗ FAILED '{title}': {e}")
             _set(job_id, status="error", error=str(e), percent=100, eta=None)
         return
-    log(f"✓ Termine '{title}' en {_fmt_dur(time.time() - t0)} → {n} stems dans {final_dir}")
+    log(f"✓ Done '{title}' in {_fmt_dur(time.time() - t0)} → {n} stems in {final_dir}")
     _set(job_id, status="done", percent=100, eta=0, output_dir=str(final_dir))
 
 
 def cancel(job_id) -> dict:
-    """Annule un job : retire de la file s'il attend, sinon stoppe celui en cours."""
+    """Cancel a job: remove it from the queue if waiting, otherwise stop the running one."""
     with JOBS_LOCK:
         job = JOBS.get(job_id)
         if not job:
-            return {"ok": False, "message": "inconnu"}
+            return {"ok": False, "message": "unknown"}
         if job_id in PENDING:
             PENDING.remove(job_id)
             job["status"] = "cancelled"
-            log(f"⊘ Retire de la file : '{job['title']}'")
+            log(f"⊘ Removed from queue: '{job['title']}'")
             return {"ok": True}
         if ACTIVE["id"] == job_id:
             _CUR["cancel"] = True
@@ -334,7 +334,7 @@ def cancel(job_id) -> dict:
         except Exception:
             pass
         return {"ok": True}
-    return {"ok": False, "message": "deja termine"}
+    return {"ok": False, "message": "already finished"}
 
 
 def _worker():
@@ -351,9 +351,9 @@ def _worker():
             continue
         try:
             _process(job_id)
-        except BaseException as e:  # noqa: BLE001 - on veut tout tracer
+        except BaseException as e:  # noqa: BLE001 - trace everything
             import traceback
-            log(f"✗ WORKER ERREUR ({job_id}) : {e}")
+            log(f"✗ WORKER ERROR ({job_id}): {e}")
             log(traceback.format_exc())
             _set(job_id, status="error", error=str(e), percent=100)
         finally:
@@ -373,7 +373,7 @@ def extract():
     title = (data.get("title") or "").strip()
     artist = (data.get("artist") or "").strip()
     if not title:
-        return jsonify(error="titre manquant"), 400
+        return jsonify(error="missing title"), 400
 
     quality = data.get("quality") if data.get("quality") in QUALITY_PROFILES else None
     query = f"{title} {artist}".strip()
@@ -388,7 +388,7 @@ def extract():
         PENDING.append(job_id)
         position = len(PENDING)
     JOB_QUEUE.put(job_id)
-    log(f"➕ En file (#{position}) : '{title}'")
+    log(f"➕ Queued (#{position}): '{title}'")
     return jsonify(job_id=job_id, position=position), 202
 
 
@@ -428,7 +428,7 @@ def queue_snapshot():
 
 @app.route("/queue", methods=["GET"])
 def queue_state():
-    """Etat global de la file (pour l'affichage de l'extension)."""
+    """Global queue state (for the extension display)."""
     return jsonify(queue_snapshot())
 
 
@@ -458,33 +458,33 @@ class ServerController:
     def start(self) -> dict:
         with self._lock:
             if self.is_running():
-                return {"ok": True, "message": "deja demarre"}
+                return {"ok": True, "message": "already running"}
             ensure_ffmpeg_on_path()
             output_root().mkdir(parents=True, exist_ok=True)
             try:
                 self._srv = make_server(HOST, PORT, app, threaded=True)
             except OSError as e:
-                log(f"Impossible de demarrer (port {PORT}) : {e}")
-                return {"ok": False, "message": f"port {PORT} occupe ?"}
+                log(f"Cannot start (port {PORT}): {e}")
+                return {"ok": False, "message": f"port {PORT} in use?"}
             self._thread = threading.Thread(
                 target=self._srv.serve_forever, daemon=True
             )
             self._thread.start()
             cfg = get_config()
-            log(f"● Serveur v{SERVER_VERSION} demarre sur http://{HOST}:{PORT}")
-            log(f"  sortie : {cfg['output_dir']}  |  qualite : {cfg['quality_label']}")
-            return {"ok": True, "message": "demarre"}
+            log(f"● Server v{SERVER_VERSION} started at http://{HOST}:{PORT}")
+            log(f"  output: {cfg['output_dir']}  |  quality: {cfg['quality_label']}")
+            return {"ok": True, "message": "started"}
 
     def stop(self) -> dict:
         with self._lock:
             if not self.is_running():
-                return {"ok": True, "message": "deja arrete"}
+                return {"ok": True, "message": "already stopped"}
             self._srv.shutdown()
             self._thread.join(timeout=5)
             self._srv = None
             self._thread = None
-            log("Serveur arrete")
-            return {"ok": True, "message": "arrete"}
+            log("Server stopped")
+            return {"ok": True, "message": "stopped"}
 
     def status(self) -> dict:
         return {

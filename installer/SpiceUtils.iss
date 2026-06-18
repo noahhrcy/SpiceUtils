@@ -14,7 +14,7 @@
 ; ============================================================================
 
 #define MyAppName    "SpiceUtils"
-#define MyAppVersion "1.1.3"
+#define MyAppVersion "1.1.4"
 #define MyAppPublisher "SpiceUtils"
 #define MyAppId "{A7C4E91F-2D6B-4A83-9F1C-SPICEUTILS001}"
 #define PyW "{app}\app\.venv\Scripts\pythonw.exe"
@@ -44,11 +44,10 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
 [Languages]
-Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Creer un raccourci sur le bureau"; GroupDescription: "Raccourcis :"
+Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
 
 [Files]
 ; Application (UI + serveur + extensions). Le venv est cree a l'install.
@@ -59,20 +58,20 @@ Source: "..\README.md";      DestDir: "{app}"; Flags: ignoreversion skipifsource
 
 [Icons]
 Name: "{group}\SpiceUtils";        Filename: "{#PyW}"; Parameters: """{#MainPy}"""; WorkingDir: "{app}\app"; IconFilename: "{app}\app\icon.ico"
-Name: "{group}\Desinstaller SpiceUtils"; Filename: "{uninstallexe}"
+Name: "{group}\Uninstall SpiceUtils"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\SpiceUtils";  Filename: "{#PyW}"; Parameters: """{#MainPy}"""; WorkingDir: "{app}\app"; IconFilename: "{app}\app\icon.ico"; Tasks: desktopicon
 
 [Run]
-; 1) Post-install (admin) : Python autonome + FFmpeg + WebView2 + venv + deps.
-;    Fenetre cachee (runhidden) ; la progression s'affiche dans l'assistant.
+; 1) Post-install (admin): standalone Python + FFmpeg + WebView2 + venv + deps.
+;    Hidden window (runhidden); progress is shown in the wizard.
 Filename: "powershell.exe"; \
   Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\installer\postinstall.ps1"" -AppDir ""{app}"""; \
-  StatusMsg: "Installation des composants et dependances (plusieurs minutes, merci de patienter)..."; \
+  StatusMsg: "Installing components and dependencies (several minutes, please wait)..."; \
   Flags: runhidden waituntilterminated
 
-; 2) Lancer SpiceUtils (aussi apres une mise a jour silencieuse).
+; 2) Launch SpiceUtils (also after a silent update).
 Filename: "{#PyW}"; Parameters: """{#MainPy}"""; WorkingDir: "{app}\app"; \
-  Description: "Lancer SpiceUtils maintenant"; \
+  Description: "Launch SpiceUtils now"; \
   Flags: runasoriginaluser nowait postinstall; \
   Check: ServerReady
 
@@ -111,10 +110,10 @@ procedure InitializeWizard();
 begin
   if IsUpgrade then
   begin
-    WizardForm.WelcomeLabel1.Caption := 'Mise a jour de {#MyAppName}';
+    WizardForm.WelcomeLabel1.Caption := 'Update {#MyAppName}';
     WizardForm.WelcomeLabel2.Caption :=
-      'Une version est deja installee. Cet assistant va la mettre a jour.' + #13#10 + #13#10 +
-      'SpiceUtils sera arrete puis pourra etre relance a la fin.';
+      'A version is already installed. This wizard will update it.' + #13#10 + #13#10 +
+      'SpiceUtils will be stopped and can be relaunched at the end.';
   end;
 end;
 
@@ -123,7 +122,7 @@ begin
   Result := FileExists(ExpandConstant('{#PyW}'));
 end;
 
-// Avant la copie : stoppe SpiceUtils (et son serveur) pour liberer les fichiers.
+// Before copying: stop SpiceUtils (and its server) to free the files.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
@@ -135,4 +134,4 @@ begin
 end;
 
 [Messages]
-french.WelcomeLabel2=Cet assistant va installer SpiceUtils : l'application, son serveur de separation de stems et l'extension Stem Extractor (installable depuis l'app).
+WelcomeLabel2=This wizard will install SpiceUtils: the application, its stem-separation server, and the Stem Extractor extension (installable from the app).
