@@ -6,6 +6,11 @@ let statusTimer = null;
 
 function $(sel) { return document.querySelector(sel); }
 function $all(sel) { return Array.from(document.querySelectorAll(sel)); }
+// Track titles come from Spotify metadata: never inject them as raw HTML.
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
 
 function toast(msg) {
   const t = $("#toast");
@@ -71,13 +76,13 @@ async function refreshQueue() {
   if (q.active) {
     const a = q.active;
     const lbl = a.status === "queued" ? `queued` : `${a.phase || ""} ${a.percent || 0}%`;
-    rows.push(`<div class="q-row q-active"><span class="q-t">▶ ${a.title}</span>
-      <span class="muted">${lbl}</span>
-      <button class="link q-cancel" data-id="${a.job_id}">Cancel</button></div>`);
+    rows.push(`<div class="q-row q-active"><span class="q-t">▶ ${esc(a.title)}</span>
+      <span class="muted">${esc(lbl)}</span>
+      <button class="link q-cancel" data-id="${esc(a.job_id)}">Cancel</button></div>`);
   }
   (q.pending || []).forEach((p) => {
-    rows.push(`<div class="q-row"><span class="q-t">• ${p.title}</span>
-      <button class="link q-cancel" data-id="${p.job_id}">Remove</button></div>`);
+    rows.push(`<div class="q-row"><span class="q-t">• ${esc(p.title)}</span>
+      <button class="link q-cancel" data-id="${esc(p.job_id)}">Remove</button></div>`);
   });
   box.innerHTML = rows.length ? rows.join("") : '<span class="muted">Queue empty.</span>';
   box.querySelectorAll(".q-cancel").forEach((b) => {
@@ -107,16 +112,47 @@ $("#btn-stop").addEventListener("click", async () => {
 $("#btn-open-out").addEventListener("click", () => api.open_output());
 
 // --- Extensions ---
+let extLoadSeq = 0;
+
+async function refreshRepair() {
+  const r = await api.get_repair_status();
+  window.spiceRepairState(!!(r && r.needs_repair));
+  const w = $("#spotify-warning");
+  const msg = r && r.spotify === "store"
+    ? "You have the Microsoft Store version of Spotify, which Spicetify does not support. " +
+      "Uninstall it and install Spotify from spotify.com/download."
+    : r && r.spotify === "missing"
+      ? "Spotify (desktop app) was not found. Install it from spotify.com/download."
+      : "";
+  w.textContent = msg;
+  w.classList.toggle("hidden", !msg);
+}
+
+window.spiceRepairState = (needed) => $("#repair-banner").classList.toggle("hidden", !needed);
+
+$("#btn-repair").addEventListener("click", async () => {
+  const b = $("#btn-repair");
+  b.disabled = true; b.textContent = "Repairing…";
+  const r = await api.repair_spicetify();
+  b.disabled = false; b.textContent = "Repair now";
+  toast(r.ok ? "Spicetify repaired ✓" : "Repair failed — see Server log");
+  loadExtensions();
+});
+
 async function loadExtensions() {
   if (!api) return;
+  const seq = ++extLoadSeq;          // ignore results of an older, slower refresh
   const avail = await api.spicetify_available();
   $("#spicetify-warning").classList.toggle("hidden", avail);
+  refreshRepair();
 
   const list = await api.list_extensions();
+  if (seq !== extLoadSeq) return;
   const root = $("#ext-list");
   root.innerHTML = "";
   list.forEach(async (e) => {
     const card = document.createElement("div");
+    root.appendChild(card);          // keep the manifest order
     card.className = "ext-card";
     // Stem Extractor depends on the server: extend its card with a dedicated bar.
     const hasServer = e.id === "stemExtractor";
@@ -126,9 +162,9 @@ async function loadExtensions() {
       <div class="ext-main">
         <div class="ext-icon${customIcon ? " svg" : ""}">${iconHtml}</div>
         <div class="ext-info">
-          <div><span class="name">${e.name}</span><span class="ver">v${e.version}</span>
+          <div><span class="name">${esc(e.name)}</span><span class="ver">v${esc(e.version)}</span>
             ${e.installed ? '<span class="badge">Installed</span>' : ""}</div>
-          <div class="desc">${e.description}</div>
+          <div class="desc">${esc(e.description)}</div>
         </div>
         <div class="ext-cta"></div>
       </div>
@@ -136,7 +172,6 @@ async function loadExtensions() {
       <div class="ext-extend">
         <div class="ext-opts">
           <button class="btn opt-folder" title="Output folder">Folder</button>
-          <button class="btn opt-quality">Quality</button>
         </div>
         <button class="btn ext-server-btn">Server</button>
       </div>` : ""}`;
@@ -145,7 +180,7 @@ async function loadExtensions() {
     btn.className = "btn" + (e.installed ? "" : " primary");
     btn.textContent = e.installed ? "Uninstall" : "Install";
     btn.style.marginTop = "0";
-    btn.disabled = !avail || !e.available;
+    btn.disabled = !e.available;     // Spicetify itself is installed on demand
     btn.addEventListener("click", () => toggleExtension(e, btn));
     cta.appendChild(btn);
     // "Update" button if a newer version is available on the repo.
@@ -171,17 +206,12 @@ async function loadExtensions() {
       const st = await api.get_status();
       applyServerBtnState(srvBtn, st.running);
     }
-    // Extraction options (output folder + quality/fast).
+    // Extraction option: output folder.
     const optFolder = card.querySelector(".opt-folder");
-    const optQuality = card.querySelector(".opt-quality");
-    if (optFolder && optQuality) {
+    if (optFolder) {
       const applyCfg = (cfg) => {
         optFolder.innerHTML = '<span class="oic">📁</span> Choose folder';
         optFolder.title = "Output folder: " + cfg.output_dir;
-        optQuality.innerHTML = cfg.quality === "fast"
-          ? '<span class="oic">⚡</span> Mode: Fast' : '<span class="oic">✨</span> Mode: Quality';
-        optQuality.title = cfg.quality === "fast"
-          ? "Fast extraction (htdemucs)" : "High-quality extraction (htdemucs_ft, slower)";
       };
       applyCfg(await api.get_extract_config());
       optFolder.addEventListener("click", async () => {
@@ -189,14 +219,7 @@ async function loadExtensions() {
         toast("Output folder updated");
         refreshStatus();
       });
-      optQuality.addEventListener("click", async () => {
-        const cur = await api.get_extract_config();
-        const cfg = await api.set_quality(cur.quality === "fast" ? "quality" : "fast");
-        applyCfg(cfg);
-        toast(cfg.quality === "fast" ? "Fast mode" : "Quality mode");
-      });
     }
-    root.appendChild(card);
   });
 }
 
@@ -216,7 +239,8 @@ async function toggleExtension(e, btn) {
   if (r.ok) {
     toast(e.installed ? `${e.name} uninstalled` : `${e.name} installed ✓`);
   } else {
-    toast("Failed — see details");
+    const last = String(r.log || "").trim().split("\n").pop() || "unknown error";
+    toast("Failed: " + last.slice(0, 120));
     console.error(r.log);
   }
   loadExtensions();
@@ -279,9 +303,11 @@ window.addEventListener("pywebviewready", () => {
   api = window.pywebview.api;
   refreshStatus();
   refreshLogs();
-  logTimer = setInterval(refreshLogs, 1500);
+  // Poll the log/queue only while the Server view is visible.
+  const serverVisible = () => $("#tab-server").classList.contains("active");
+  logTimer = setInterval(() => { if (serverVisible()) refreshLogs(); }, 1500);
   statusTimer = setInterval(() => {
     refreshStatus();
-    if ($("#tab-server").classList.contains("active")) refreshQueue();
+    if (serverVisible()) refreshQueue();
   }, 2500);
 });

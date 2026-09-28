@@ -8,8 +8,8 @@ Fenetre WebView (HTML/CSS) + icone dans la barre des taches.
 """
 
 import os
-import sys
 import threading
+import time
 from pathlib import Path
 
 import webview
@@ -44,19 +44,14 @@ class Api:
         return server.stop()
 
     def get_logs(self):
+        # Read only the tail (the log file can grow large).
         try:
-            return server_mod.LOG_FILE.read_text(encoding="utf-8", errors="replace")[-8000:]
+            with open(server_mod.LOG_FILE, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                f.seek(max(0, f.tell() - 12000))
+                return f.read().decode("utf-8", errors="replace")[-8000:]
         except OSError:
             return ""
-
-    def open_output(self):
-        try:
-            d = server_mod.output_root()
-            d.mkdir(parents=True, exist_ok=True)
-            os.startfile(str(d))  # noqa: S606 (Windows)
-        except Exception:
-            return {"ok": False}
-        return {"ok": True}
 
     def get_queue(self):
         return server_mod.queue_snapshot()
@@ -67,9 +62,6 @@ class Api:
     # Options d'extraction (Stem Extractor)
     def get_extract_config(self):
         return server_mod.get_config()
-
-    def set_quality(self, mode):
-        return server_mod.set_config(quality=mode)
 
     def pick_output_dir(self):
         """Ouvre un selecteur de dossier ; enregistre le choix."""
@@ -82,11 +74,9 @@ class Api:
             return server_mod.set_config(output_dir=str(path))
         return server_mod.get_config()
 
-    def open_output_dir(self):
+    def open_output(self):
         try:
-            d = server_mod.output_root()
-            d.mkdir(parents=True, exist_ok=True)
-            os.startfile(str(d))
+            os.startfile(str(server_mod.output_root()))  # noqa: S606 (Windows)
         except Exception:
             return {"ok": False}
         return {"ok": True}
@@ -121,6 +111,15 @@ class Api:
             return ext_mod.update_extension(ext_id)
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "log": str(e)}
+
+    def get_repair_status(self):
+        try:
+            return ext_mod.repair_status()
+        except Exception:  # noqa: BLE001
+            return {"needs_repair": False}
+
+    def repair_spicetify(self):
+        return _repair(restart=True)
 
     # Reglages
     def get_settings(self):
@@ -199,17 +198,99 @@ def _start_tray():
         if window:
             window.show()
 
+    def on_repair(icon=None, item=None):
+        threading.Thread(target=_repair, kwargs={"restart": True}, daemon=True).start()
+
     tray_icon = pystray.Icon(
         "spiceutils",
         _make_tray_image(),
         "SpiceUtils",
         menu=pystray.Menu(
-            pystray.MenuItem("Ouvrir SpiceUtils", on_open, default=True),
+            pystray.MenuItem("Open SpiceUtils", on_open, default=True),
+            pystray.MenuItem("Repair Spicetify (restarts Spotify)", on_repair,
+                             visible=lambda item: _REPAIR["needed"]),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Quitter", lambda icon, item: _quit()),
+            pystray.MenuItem("Quit", lambda icon, item: _quit()),
         ),
     )
     threading.Thread(target=tray_icon.run, daemon=True).start()
+
+
+def _notify(title, msg):
+    try:
+        if tray_icon:
+            tray_icon.notify(msg, title)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _js(code):
+    try:
+        if window:
+            window.evaluate_js(code)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# --- Spicetify watchdog -------------------------------------------------------
+# A Spotify update silently removes Spicetify (and our extensions). We re-patch
+# automatically: silently while Spotify is closed, otherwise we notify the user
+# (tray + banner) and fix it as soon as Spotify is closed.
+
+_REPAIR = {"needed": False, "lock": threading.Lock(), "notified": None, "failed": {}}
+
+
+def _set_repair_needed(v):
+    if _REPAIR["needed"] != v:
+        _REPAIR["needed"] = v
+        try:
+            if tray_icon:
+                tray_icon.update_menu()
+        except Exception:  # noqa: BLE001
+            pass
+        _js(f"window.spiceRepairState && window.spiceRepairState({str(v).lower()})")
+
+
+def _repair(restart=True):
+    if not _REPAIR["lock"].acquire(blocking=False):
+        return {"ok": False, "log": "A repair is already running."}
+    try:
+        server_mod.log("Spicetify: re-applying after a Spotify update...")
+        r = ext_mod.repair(restart=restart)
+        if r["ok"]:
+            server_mod.log("Spicetify: repaired ✓ (extensions are back in Spotify)")
+            _set_repair_needed(False)
+        else:
+            last = (r.get("log") or "").strip().splitlines()[-1:] or [""]
+            server_mod.log(f"Spicetify repair failed: {last[0][:200]}")
+        return r
+    except Exception as e:  # noqa: BLE001
+        server_mod.log(f"Spicetify repair failed: {e}")
+        return {"ok": False, "log": str(e)}
+    finally:
+        _REPAIR["lock"].release()
+
+
+def _spicetify_watchdog():
+    time.sleep(5)
+    while True:
+        try:
+            st = ext_mod.repair_status()
+            _set_repair_needed(bool(st.get("needs_repair")))
+            stamp = st.get("stamp")
+            failed_at = _REPAIR["failed"].get(stamp, 0)
+            if st.get("needs_repair") and st.get("auto") and time.time() - failed_at > 1800:
+                if not st.get("running"):
+                    if not _repair(restart=False)["ok"]:
+                        _REPAIR["failed"][stamp] = time.time()   # back off 30 min
+                elif _REPAIR["notified"] != stamp:
+                    _REPAIR["notified"] = stamp
+                    _notify("Spotify was updated",
+                            "Spicetify will be re-applied when Spotify closes. "
+                            "Or right-click the SpiceUtils tray icon > Repair Spicetify.")
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(60)
 
 
 def _stop_tray():
@@ -276,6 +357,7 @@ def on_start():
     _apply_native_icon()
     _start_tray()
     threading.Thread(target=_auto_update_check, daemon=True).start()
+    threading.Thread(target=_spicetify_watchdog, daemon=True).start()
     # Demarrage auto du serveur a l'ouverture, si active dans les reglages.
     try:
         if settings_mod.load().get("autostart_server"):

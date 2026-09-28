@@ -65,8 +65,14 @@
       <section class="tab" id="tab-extensions">
         <h1>Extensions</h1>
         <div id="spicetify-warning" class="warning hidden">
-          Spicetify was not detected. Install it from
-          <b>spicetify.app</b> to be able to install extensions.
+          Spicetify is not installed yet: it will be installed automatically
+          with your first extension.
+        </div>
+        <div id="spotify-warning" class="warning hidden"></div>
+        <div id="repair-banner" class="warning repair hidden">
+          <span>Spotify was updated and Spicetify needs to be re-applied (done
+          automatically when Spotify is closed).</span>
+          <button class="btn primary" id="btn-repair">Repair now</button>
         </div>
         <div id="ext-list" class="ext-list"></div>
       </section>

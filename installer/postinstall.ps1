@@ -140,6 +140,52 @@ if (-not $ok) {
 }
 Ok "Dependencies installed"
 
+# --- 4) NVIDIA GPU: CUDA build of torch (separation ~10x faster) -------------
+# Any failure here keeps the CPU build, which always works.
+Step "GPU acceleration"
+function TorchInfo {
+    $o = & $VenvPython -c "import torch; print('cuda' if torch.version.cuda else 'cpu')" 2>$null
+    if ($LASTEXITCODE -ne 0) { return "broken" }
+    return ($o | Select-Object -Last 1).Trim()
+}
+$Cuda = $null
+try {
+    $smi = (Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue).Source
+    if ($smi) {
+        $line = (& $smi --query-gpu=driver_version,memory.total --format=csv,noheader,nounits | Select-Object -First 1)
+        $p = $line -split ","
+        $drv = [int](($p[0].Trim() -split "\.")[0])
+        $mem = [int]($p[1].Trim())
+        Write-Host "    NVIDIA GPU: driver $($p[0].Trim()), $mem MiB"
+        if ($mem -ge 2800) {
+            if ($drv -ge 528) { $Cuda = "cu121" } elseif ($drv -ge 452) { $Cuda = "cu118" }
+        }
+    }
+} catch { $Cuda = $null }
+
+if (-not $Cuda) {
+    Ok "No compatible NVIDIA GPU: CPU mode"
+} elseif ((TorchInfo) -eq "cuda") {
+    Ok "CUDA build of torch already installed"
+} else {
+    $gpuOk = $false
+    for ($try = 1; $try -le 2; $try++) {
+        Write-Host "    Installing torch $Cuda (large download, attempt $try/2)..." -ForegroundColor Cyan
+        & $VenvPython -m pip install --force-reinstall --no-deps torch==2.2.2 torchaudio==2.2.2 `
+            --index-url "https://download.pytorch.org/whl/$Cuda" --retries 5 --timeout 180
+        if ($LASTEXITCODE -eq 0 -and (TorchInfo) -eq "cuda") { $gpuOk = $true; break }
+        Start-Sleep -Seconds 5
+    }
+    if ($gpuOk) {
+        Ok "GPU acceleration enabled ($Cuda)"
+    } else {
+        Warn "CUDA torch not installed: falling back to CPU"
+        if ((TorchInfo) -eq "broken") {
+            & $VenvPython -m pip install --force-reinstall --no-deps torch==2.2.2 torchaudio==2.2.2 --retries 5 --timeout 120
+        }
+    }
+}
+
 Remove-Item $Tmp -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "`n=== SpiceUtils ready. ===" -ForegroundColor Green
 try { Stop-Transcript | Out-Null } catch {}

@@ -24,8 +24,8 @@
     box.innerHTML =
       "<p>The <b>Stem Extractor</b> extension needs the <b>SpiceUtils</b> " +
       "application (with its server running) to extract stems.</p>" +
-      "<p style='color:#9a86b5;font-size:13px'>Install SpiceUtils, open it, " +
-      "then start the server (Server tab).</p>" +
+      "<p style='color:#9a86b5;font-size:13px'>Install SpiceUtils and open it: " +
+      "its server starts with the app (Settings → start the server when the app opens).</p>" +
       "<p style='color:#c08bf0;font-size:13px'>If you already installed SpiceUtils, " +
       "launch it before using Extract.</p>";
     const btn = document.createElement("button");
@@ -190,11 +190,9 @@
     try { await fetch(`${SERVER_URL}/cancel/${jobId}`, { method: "POST" }); } catch (e) {}
   }
 
-  async function extractStems(uris, mode) {
-    if (!backendReady) {
-      await checkServer(true);
-      if (!backendReady) { showNotInstalled(); return; }
-    }
+  // opts = { stems: ["vocals", ...], full_track: bool }
+  async function extractStems(uris, opts) {
+    if (!(await checkServer(true))) { showNotInstalled(); return; }
 
     let meta;
     try {
@@ -204,7 +202,9 @@
       console.error("[StemExtractor]", e);
       return;
     }
-    if (mode) meta.quality = mode;
+    opts = opts || loadSelection();
+    meta.stems = opts.stems;
+    meta.full_track = !!opts.full_track;
 
     try {
       const r = await fetch(`${SERVER_URL}/extract`, {
@@ -273,13 +273,18 @@
       } else {
         // file vide -> on a fini
         clearInterval(queuePoller); queuePoller = null;
-        if (q.last && q.last.status === "error") {
-          finishProgress(true, q.last.error ? q.last.error.slice(0, 60) : "Failed");
-          Spicetify.showNotification("Stem extraction failed", true);
+        const last = q.last || {};
+        if (last.status === "error") {
+          finishProgress(true, last.error ? last.error.slice(0, 90) : "Failed");
+          Spicetify.showNotification("Stem extraction failed: " + (last.error || "unknown error"), true);
+        } else if (last.status === "cancelled") {
+          finishProgress(false);
+          Spicetify.showNotification("Extraction cancelled");
         } else {
           updateProgress(100);
           finishProgress(false);
-          Spicetify.showNotification("Stems ready ✓");
+          Spicetify.showNotification(
+            last.stems && last.stems.length === 0 ? "Track downloaded ✓" : "Stems ready ✓");
         }
       }
     }, 700);
@@ -292,35 +297,100 @@
     '<rect x="9" y="1" width="2" height="14" rx="1"/>' +
     '<rect x="13" y="5" width="2" height="6" rx="1"/></svg>';
 
-  // Petit menu de choix du mode (Rapide / Qualite) au clic sur le bouton.
+  // --- Selection menu (stems to keep + full track download) ----------------
+  const STEMS = [
+    { id: "vocals", label: "🎤 Vocals" },
+    { id: "drums", label: "🥁 Drums" },
+    { id: "bass", label: "🎸 Bass" },
+    { id: "other", label: "🎹 Other" },
+  ];
+  const SEL_KEY = "stemx:selection";
+
+  function loadSelection() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SEL_KEY));
+      if (s && Array.isArray(s.stems)) return s;
+    } catch (e) {}
+    return { stems: STEMS.map((s) => s.id), full_track: false };
+  }
+  function saveSelection(sel) {
+    try { localStorage.setItem(SEL_KEY, JSON.stringify(sel)); } catch (e) {}
+  }
+
   const menuStyle = document.createElement("style");
   menuStyle.textContent = `
-    #stemx-menu{position:fixed;z-index:10000;
+    #stemx-menu{position:fixed;z-index:10000;min-width:220px;
       background:linear-gradient(160deg,rgba(46,28,68,.98),rgba(26,16,40,.98));
-      border:1px solid rgba(157,92,255,.5);border-radius:14px;padding:8px;
+      border:1px solid rgba(157,92,255,.5);border-radius:14px;padding:12px;
       box-shadow:0 16px 40px rgba(0,0,0,.55),0 0 24px rgba(126,63,224,.3);
-      display:flex;flex-direction:column;gap:8px;animation:stemxin .15s ease}
+      display:flex;flex-direction:column;gap:4px;animation:stemxin .15s ease;
+      color:#ece4f7;font-size:13px;font-family:inherit}
     @keyframes stemxin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-    #stemx-menu button{background:var(--spice-card,#241439);color:#ece4f7;border:1px solid rgba(157,92,255,.3);
-      border-radius:10px;padding:10px 16px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
-    #stemx-menu button:hover{filter:brightness(1.12)}
-    #stemx-menu .fast{background:linear-gradient(135deg,#c0445c,#8a2f44);border:none}
-    #stemx-menu .qual{background:linear-gradient(135deg,#7e3fe0,#9d5cff);border:none}`;
+    #stemx-menu .sx-h{font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:#9a86b5;margin:2px 2px 4px}
+    #stemx-menu label{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;cursor:pointer}
+    #stemx-menu label:hover{background:rgba(157,92,255,.14)}
+    #stemx-menu input{accent-color:#9d5cff;width:15px;height:15px;cursor:pointer;margin:0}
+    #stemx-menu .sx-sep{height:1px;background:rgba(157,92,255,.25);margin:6px 2px}
+    #stemx-menu .sx-go{margin-top:8px;border:none;border-radius:10px;padding:10px 16px;font-size:13px;
+      font-weight:600;cursor:pointer;color:#fff;font-family:inherit;
+      background:linear-gradient(135deg,#7e3fe0,#9d5cff)}
+    #stemx-menu .sx-go:hover{filter:brightness(1.12)}
+    #stemx-menu .sx-go:disabled{opacity:.45;cursor:default;filter:none}`;
   document.head.appendChild(menuStyle);
 
-  // Affiche le menu juste AU-DESSUS du bouton (anchor).
-  function showModeMenu(uris, anchor) {
+  // Shows the menu right ABOVE the anchor (playbar button).
+  function showExtractMenu(uris, anchor) {
     const old = document.getElementById("stemx-menu");
     if (old) { old.remove(); return; }
+    const sel = loadSelection();
     const m = document.createElement("div");
     m.id = "stemx-menu";
-    const fast = document.createElement("button");
-    fast.className = "fast"; fast.textContent = "⚡ Fast extraction";
-    const qual = document.createElement("button");
-    qual.className = "qual"; qual.textContent = "✨ Quality extraction";
-    fast.onclick = () => { m.remove(); extractStems(uris, "fast"); };
-    qual.onclick = () => { m.remove(); extractStems(uris, "quality"); };
-    m.appendChild(fast); m.appendChild(qual);
+    m.addEventListener("click", (e) => e.stopPropagation());
+
+    const addHeader = (txt) => {
+      const h = document.createElement("div");
+      h.className = "sx-h"; h.textContent = txt; m.appendChild(h);
+    };
+    const addCheck = (label, checked) => {
+      const l = document.createElement("label");
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = checked;
+      const s = document.createElement("span"); s.textContent = label;
+      l.appendChild(cb); l.appendChild(s); m.appendChild(l);
+      return cb;
+    };
+
+    addHeader("Stems to extract");
+    const boxes = STEMS.map((s) => ({ id: s.id, cb: addCheck(s.label, sel.stems.includes(s.id)) }));
+    const sep = document.createElement("div"); sep.className = "sx-sep"; m.appendChild(sep);
+    const fullCb = addCheck("⬇ Download full track (MP3)", !!sel.full_track);
+
+    const go = document.createElement("button");
+    go.className = "sx-go";
+    m.appendChild(go);
+
+    const current = () => ({
+      stems: boxes.filter((b) => b.cb.checked).map((b) => b.id),
+      full_track: fullCb.checked,
+    });
+    const refresh = () => {
+      const c = current();
+      go.disabled = !c.stems.length && !c.full_track;
+      go.textContent = c.stems.length
+        ? `Extract ${c.stems.length} stem${c.stems.length > 1 ? "s" : ""}${c.full_track ? " + track" : ""}`
+        : c.full_track ? "Download track" : "Select something";
+    };
+    boxes.forEach((b) => b.cb.addEventListener("change", refresh));
+    fullCb.addEventListener("change", refresh);
+    refresh();
+
+    go.onclick = () => {
+      const c = current();
+      saveSelection(c);
+      m.remove();
+      extractStems(uris, c);
+    };
+
     m.style.visibility = "hidden";
     document.body.appendChild(m);
     // Positionne au-dessus et centre sur le bouton.
@@ -350,26 +420,21 @@
         Spicetify.showNotification("No track playing", true);
         return;
       }
-      if (!backendReady) {
-        await checkServer(true);
-        if (!backendReady) { showNotInstalled(); return; }
-      }
+      if (!(await checkServer(true))) { showNotInstalled(); return; }
       const anchor = (self && self.element) || pbButton.element;
-      showModeMenu(cur.uri, anchor);
+      showExtractMenu(cur.uri, anchor);
     },
     false,
     false
   );
 
   new Spicetify.ContextMenu.Item(
-    "Extract stems (Fast)",
-    (uris) => extractStems(uris, "fast"),
-    (uris) => uris.length === 1 && Spicetify.URI.isTrack(uris[0]),
-    STEM_ICON
-  ).register();
-  new Spicetify.ContextMenu.Item(
-    "Extract stems (Quality)",
-    (uris) => extractStems(uris, "quality"),
+    "Extract stems / download…",
+    async (uris) => {
+      if (!(await checkServer(true))) { showNotInstalled(); return; }
+      // Opened from a right-click: anchor the menu to the playbar button.
+      showExtractMenu(uris, pbButton.element);
+    },
     (uris) => uris.length === 1 && Spicetify.URI.isTrack(uris[0]),
     STEM_ICON
   ).register();
@@ -398,12 +463,22 @@
     }
   }
 
+  // Extractions already running (e.g. Spotify was restarted): show their progress.
+  async function resumeProgress() {
+    try {
+      const q = await (await fetch(`${SERVER_URL}/queue`)).json();
+      if (q.active || q.pending_count > 0) {
+        showProgress((q.active && q.active.title) || "");
+        startQueuePoller();
+      }
+    } catch (e) {}
+  }
+
   checkServer(true).then((ok) => {
-    if (!ok) {
-      const id = setInterval(async () => {
-        if (await checkServer(true)) clearInterval(id);
-      }, 15000);
-    }
+    if (ok) { resumeProgress(); return; }
+    const id = setInterval(async () => {
+      if (await checkServer(true)) { clearInterval(id); resumeProgress(); }
+    }, 15000);
   });
 
   console.log("[StemExtractor] extension loaded (SpiceUtils)");

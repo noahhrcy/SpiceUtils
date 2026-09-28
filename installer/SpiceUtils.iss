@@ -1,4 +1,4 @@
-; ============================================================================
+﻿; ============================================================================
 ;  SpiceUtils - script Inno Setup -> produit "SpiceUtils-Setup.exe"
 ;
 ;  Installe l'application SpiceUtils (WebView) + son serveur + ses extensions
@@ -14,7 +14,7 @@
 ; ============================================================================
 
 #define MyAppName    "SpiceUtils"
-#define MyAppVersion "1.1.6"
+#define MyAppVersion "1.3.0"
 #define MyAppPublisher "SpiceUtils"
 #define MyAppId "{A7C4E91F-2D6B-4A83-9F1C-SPICEUTILS001}"
 #define PyW "{app}\app\.venv\Scripts\pythonw.exe"
@@ -128,7 +128,7 @@ var
   ResultCode: Integer;
 begin
   Exec('powershell.exe',
-    '-NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like ''*SpiceUtils*main.py*'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"',
+    '-NoProfile -ExecutionPolicy Bypass -Command "$a=''' + ExpandConstant('{app}') + '\*''; $l=$env:LOCALAPPDATA+''\SpiceUtils\*''; Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like $a -or $_.ExecutablePath -like $l } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Result := '';
 end;
